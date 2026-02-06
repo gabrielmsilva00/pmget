@@ -377,15 +377,18 @@ EOF
     # Part 2: Functions and Logic (Quoted Heredoc to protect awk/regex)
     cat >> "$HELPER_SCRIPT" <<'EOF'
 
-_get_state() { grep "^$2=" "$1" 2>/dev/null | cut -d= -f2 || echo 0; }
+_get_state() {
+    awk -F= -v pkg="$2" '$1 == pkg {print $2}' "$1"
+}
 
 _set_state() {
     local sf="$1"
     local pkg="$2"
     local val="$3"
-    grep -v "^$pkg=" "$sf" > "$sf.tmp" 2>/dev/null || true
-    mv "$sf.tmp" "$sf"
-    echo "$pkg=$val" >> "$sf"
+    awk -F= -v pkg="$pkg" -v val="$val" '
+        $1 != pkg {print $0}
+        END {print pkg "=" val}
+    ' "$sf" > "$sf.tmp" && mv "$sf.tmp" "$sf"
 }
 
 _toggle_sudo() {
@@ -493,7 +496,15 @@ _internal_gen_list() {
         CYAN="\033[36m"; BOLD="\033[1m"; RESET="\033[0m"
         
         # Header and Legends (first field is dummy for --with-nth=2)
+        n_inst=0; n_rem=0; n_upgr=0
+        for (p in state) {
+            if (state[p] == "1") n_inst++
+            else if (state[p] == "2") n_rem++
+            else if (state[p] == "3") n_upgr++
+        }
+        
         printf "_\t%s%s  SUDO: %s%s%s\n", BOLD, CYAN, RESET, BOLD, (sudo_on ? GREEN "ON" : RED "OFF")
+        printf "_\t%s%s  SELECTED: %sInstall: %d | Remove: %d | Upgrade: %d%s\n", BOLD, CYAN, RESET, n_inst, n_rem, n_upgr, RESET
         printf "_\t%s%s  KEYS: %s(Tab: Sudo | ←/→/Space: Cycle | Enter: Apply | Esc: Exit)\n", BOLD, CYAN, RESET
         printf "_\t%s%s  SYMBOLS: %s[ ] None  [✓] Inst  [^] Upgr  [+] Add  [-] Rem  [↑] Upgr\n", BOLD, CYAN, RESET
     }
@@ -552,8 +563,9 @@ EOF
             --prompt="pmget> " \
             --delimiter=$'\t' \
             --with-nth=2 \
-            --header-lines=3 \
+            --header-lines=4 \
             --tiebreak=begin,length \
+            --no-sort \
             --preview="$cmd_preview" \
             --preview-window="top:40%" \
             --layout=reverse \
