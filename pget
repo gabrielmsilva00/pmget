@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# pget - Package Getter (https://github.com/gabrielmsilva00/pget)
 set -euo pipefail
 
 VERSION="1.0.0"

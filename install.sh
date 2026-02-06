@@ -46,22 +46,14 @@ echo "${C}Target:${R} $DIR"
 echo
 
 # Check for existing pget
-EXISTING_PGET=$(command -v pget 2>/dev/null)
+EXISTING_PGET=$(command -v pget 2>/dev/null) || true
 if [[ -n "$EXISTING_PGET" ]]; then
     # Check if it's our pget by looking for signature
-    if grep -q "Package Getter" "$EXISTING_PGET" 2>/dev/null; then
-        CURRENT_VER=$("$EXISTING_PGET" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
-        NEW_VER=$(curl -fsSL "$URL/pget" 2>/dev/null | grep -oE '^VERSION="[0-9]+\.[0-9]+\.[0-9]+"' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
-        
-        if [[ "$EXISTING_PGET" == "$DIR/pget" ]]; then
-            echo "${C}→${R} Updating pget: v${CURRENT_VER} → v${NEW_VER}"
-        else
-            echo "${Y}!${R} pget v${CURRENT_VER} installed at: $EXISTING_PGET"
-            echo "  Will install v${NEW_VER} to: $DIR/pget"
-        fi
+    if grep -q "github.com/gabrielmsilva00/pget" "$EXISTING_PGET" 2>/dev/null; then
+        CURRENT_VER=$("$EXISTING_PGET" -v 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "?")
+        echo "${C}→${R} Updating pget v${CURRENT_VER}"
     else
-        echo "${Y}⚠${R} Different 'pget' binary found: $EXISTING_PGET"
-        echo "  This may conflict with our pget."
+        echo "${Y}⚠${R} Different 'pget' found: $EXISTING_PGET"
         echo "  Will install to: $DIR/pget"
     fi
     echo
@@ -87,14 +79,37 @@ fi
 
 echo
 
-# Install pget
+# Create directory
 if [[ "$NEED_SUDO" == true ]]; then
     sudo mkdir -p "$DIR"
-    curl -fsSL "$URL/pget" | sudo tee "$DIR/pget" > /dev/null && sudo chmod +x "$DIR/pget" || { echo "${E}Download failed${R}"; exit 1; }
 else
     mkdir -p "$DIR"
-    curl -fsSL "$URL/pget" -o "$DIR/pget" && chmod +x "$DIR/pget" || { echo "${E}Download failed${R}"; exit 1; }
 fi
+
+# Download pget
+TMPFILE=$(mktemp)
+if ! curl -fsSL "$URL/pget" -o "$TMPFILE"; then
+    echo "${E}Download failed${R}"
+    rm -f "$TMPFILE"
+    exit 1
+fi
+
+# Verify download (check it's not empty and contains our signature)
+if [[ ! -s "$TMPFILE" ]] || ! grep -q "github.com/gabrielmsilva00/pget" "$TMPFILE"; then
+    echo "${E}Download invalid or corrupted${R}"
+    rm -f "$TMPFILE"
+    exit 1
+fi
+
+# Install
+if [[ "$NEED_SUDO" == true ]]; then
+    sudo mv "$TMPFILE" "$DIR/pget"
+    sudo chmod +x "$DIR/pget"
+else
+    mv "$TMPFILE" "$DIR/pget"
+    chmod +x "$DIR/pget"
+fi
+
 echo "${G}✓${R} Installed to $DIR/pget"
 
 # Print PATH instructions if needed (don't modify shell config)
