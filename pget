@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pget - Package Getter (https://github.com/gabrielmsilva00/pget)
 
-VERSION="1.0.4"
+VERSION="1.0.5"
 
 # Colors
 BOLD=$(tput bold 2>/dev/null) || BOLD=""
@@ -87,10 +87,88 @@ show_info() {
     esac
 }
 
+
+# --- Internal Helper Functions (for fzf interactions) ---
+
+_get_state() { grep "^$2=" "$1" 2>/dev/null | cut -d= -f2 || echo 0; }
+
+_set_state() {
+    local sf="$1"
+    local pkg="$2"
+    local val="$3"
+    grep -v "^$pkg=" "$sf" > "$sf.tmp" 2>/dev/null || true
+    mv "$sf.tmp" "$sf"
+    echo "$pkg=$val" >> "$sf"
+}
+
+_toggle_sudo() {
+    local sf="$1"
+    if grep -q "__SUDO__=true" "$sf"; then
+        grep -v "__SUDO__=" "$sf" > "$sf.tmp" && mv "$sf.tmp" "$sf"
+        echo "false"
+    else
+        echo "__SUDO__=true" >> "$sf"
+        echo "true"
+    fi
+}
+
+_internal_state_mod() {
+    local sf="$1"
+    local pkg="$2"
+    local dir="$3" # 1 (next), 2 (prev/double), or direct value
+    local s=$(_get_state "$sf" "$pkg")
+    
+    local new_s=0
+    if [[ "$dir" == "next" ]]; then
+        new_s=$(( (s + 1) % 3 ))
+    elif [[ "$dir" == "prev" ]]; then
+        new_s=$(( (s + 2) % 3 ))
+    elif [[ "$dir" == "toggle_or_select" ]]; then
+         # If unselected, select (1). If selected, do generic next (cycle).
+         if [[ "$s" == "0" ]]; then new_s=1; else new_s=$(( (s + 1) % 3 )); fi
+    fi
+    _set_state "$sf" "$pkg" "$new_s"
+}
+
+_internal_gen_list() {
+    local pkg_file="$1"
+    local state_file="$2"
+    awk -v state_file="$state_file" '
+    BEGIN {
+        while ((getline line < state_file) > 0) {
+            split(line, parts, "=")
+            # Ignore metadata
+            if (parts[1] !~ /^__/) {
+                state[parts[1]] = parts[2]
+            }
+        }
+        close(state_file)
+        GREEN="\033[32m"; RED="\033[31m"; RESET="\033[0m"
+    }
+    {
+        s = state[$0]
+        if (s == "1") print GREEN "[+] " RESET $0
+        else if (s == "2") print RED "[-] " RESET $0
+        else print "[ ] " $0
+    }
+    ' "$pkg_file"
+}
+
+# ----------------------------------------------------
+
 parse_args() {
     local mode=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            # Internal APIs
+            --_gen-list)
+                 _internal_gen_list "$2" "$3"; exit 0 ;;
+            --_update-state)
+                 _internal_state_mod "$2" "$3" "$4"; exit 0 ;;
+            --_toggle-sudo)
+                 _toggle_sudo "$2"; exit 0 ;;
+            
+            # Public APIs
             -c|--cli)     CLI_MODE=true ;;
             -s|--sudo)    USE_SUDO=true ;;
             -i|--install) mode="i" ;;
@@ -113,38 +191,14 @@ run_cli() {
     exit $rc
 }
 
-get_state() { grep "^$1=" "$STATE_FILE" 2>/dev/null | cut -d= -f2 || echo 0; }
-set_state() { 
-    grep -v "^$1=" "$STATE_FILE" > "$STATE_FILE.tmp" 2>/dev/null || true
-    mv "$STATE_FILE.tmp" "$STATE_FILE"
-    echo "$1=$2" >> "$STATE_FILE"
-}
-
-# Optimized list generation using awk
-gen_list() {
-    awk -v state_file="$STATE_FILE" '
-    BEGIN {
-        while ((getline line < state_file) > 0) {
-            split(line, parts, "=")
-            state[parts[1]] = parts[2]
-        }
-        close(state_file)
-        GREEN="\033[32m"; RED="\033[31m"; RESET="\033[0m"
-    }
-    {
-        s = state[$0]
-        if (s == "1") print GREEN "[+] " RESET $0
-        else if (s == "2") print RED "[-] " RESET $0
-        else print "[ ] " $0
-    }
-    ' "$PKG_FILE"
-}
-
 run_tui() {
     echo -n "${CYAN}Loading packages...${RESET} "
     
     PKG_FILE=$(mktemp)
     STATE_FILE=$(mktemp)
+    
+    # Initialize Sudo state
+    [[ "$USE_SUDO" == true ]] && echo "__SUDO__=true" >> "$STATE_FILE"
     
     fetch_packages > "$PKG_FILE"
     
@@ -154,89 +208,70 @@ run_tui() {
         exit 1
     fi
     echo "${GREEN}OK${RESET} ($(wc -l < "$PKG_FILE" | tr -d ' ') items)"
-    
-    local query=""
-    
-    while true; do
-        tput civis 2>/dev/null || true
-        
-        local header="Enter=Sel/Exec | ←→=Cycle | s=Sudo ($([[ "$USE_SUDO" == true ]] && echo "${GREEN}ON${RESET}" || echo "${RED}OFF${RESET}"))"
-        
-        # Generates list and pipes to fzf WITHOUT input redirection (fixes system files bug)
-        local result
-        result=$(gen_list | fzf --ansi --no-multi \
-            --query="$query" \
-            --prompt="pget: " \
-            --header="$header" \
-            --preview="pkg=\$(echo {} | sed 's/\x1b\[[0-9;]*m//g' | awk '{print \$2}'); $0 --info \$pkg" \
-            --preview-window="top:40%" \
-            --expect="enter,right,left,s" \
-            --print-query \
-            --layout=reverse \
-            --info=inline \
-            2>/dev/tty) || true
 
-        tput cnorm 2>/dev/null || true
-        
-        local lines_arr
-        mapfile -t lines_arr <<< "$result"
-        local q="${lines_arr[0]}"
-        local key="${lines_arr[1]}"
-        local selection="${lines_arr[2]}"
-        
-        # Clean formatted package name
-        local pkg=$(echo "$selection" | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $2}')
-        query="$q"
-        
-        # Exit if Esc/Ctrl-C
-        [[ -z "$key" && -z "$selection" ]] && { echo "${CYAN}Exit${RESET}"; break; }
-        
-        case "$key" in
-            s)
-                 USE_SUDO=$([[ "$USE_SUDO" == true ]] && echo false || echo true)
-                 ;;
-            right)
-                [[ -n "$pkg" ]] && {
-                    local s=$(get_state "$pkg")
-                    set_state "$pkg" $(( (s + 1) % 3 ))
-                }
-                ;;
-            left)
-                [[ -n "$pkg" ]] && {
-                    local s=$(get_state "$pkg")
-                    set_state "$pkg" $(( (s + 2) % 3 ))
-                }
-                ;;
-            enter)
-                if [[ -n "$pkg" ]]; then
-                    local s=$(get_state "$pkg")
-                    if [[ "$s" == "0" ]]; then
-                         # Not selected -> Mark for Install
-                         set_state "$pkg" 1
-                    else
-                         # Already marked -> Execute Pending
-                         local inst=$(grep '=1$' "$STATE_FILE" 2>/dev/null | cut -d= -f1 | tr '\n' ' ')
-                         local rem=$(grep '=2$' "$STATE_FILE" 2>/dev/null | cut -d= -f1 | tr '\n' ' ')
-                         
-                         if [[ -z "$inst" && -z "$rem" ]]; then
-                             # Nothing actually pending (maybe toggled off?)
-                             continue
-                         fi
+    # We need the absolute path to self to call internal functions
+    SELF_PATH=$(realpath "$0" 2>/dev/null || echo "$0")
+    
+    # Define Commands
+    local get_pkg_name="echo {} | sed 's/\x1b\[[0-9;]*m//g' | awk '{print \$2}'"
+    
+    local cmd_update_next="$SELF_PATH --_update-state '$STATE_FILE' \$($get_pkg_name) next"
+    local cmd_update_prev="$SELF_PATH --_update-state '$STATE_FILE' \$($get_pkg_name) prev"
+    local cmd_toggle="$SELF_PATH --_update-state '$STATE_FILE' \$($get_pkg_name) toggle_or_select"
+    local cmd_reload="$SELF_PATH --_gen-list '$PKG_FILE' '$STATE_FILE'"
+    local cmd_preview="pkg=\$(echo {} | sed 's/\x1b\[[0-9;]*m//g' | awk '{print \$2}'); $SELF_PATH --info \$pkg"
+    local cmd_sudo_toggle="$SELF_PATH --_toggle-sudo '$STATE_FILE'"
 
-                         echo
-                         local cmd="pget -c"
-                         [[ "$USE_SUDO" == true ]] && cmd+=" -s"
-                         [[ -n "$inst" ]] && cmd+=" -i $inst"
-                         [[ -n "$rem" ]] && cmd+=" -r $rem"
-                         
-                         echo "${CYAN}> Executing...${RESET}"
-                         eval "$cmd"
-                         exit 0
-                    fi
-                fi
-                ;;
-        esac
-    done
+    # Header Logic
+    # We can't easily dynamic update the header string variable inside bind.
+    # But we can assume the switch happens.
+    
+    tput civis 2>/dev/null || true
+    
+    # Initial Generation
+    _internal_gen_list "$PKG_FILE" "$STATE_FILE" | \
+    fzf --ansi --no-multi \
+        --prompt="pget: " \
+        --header="Enter=Exec | Tab=Toggle | ←→=Cycle | s=Sudo" \
+        --preview="$cmd_preview" \
+        --preview-window="top:40%" \
+        --layout=reverse \
+        --info=inline \
+        --bind "right:execute-silent($cmd_update_next)+reload($cmd_reload)" \
+        --bind "left:execute-silent($cmd_update_prev)+reload($cmd_reload)" \
+        --bind "tab:execute-silent($cmd_toggle)+reload($cmd_reload)" \
+        --bind "alt-enter:print-query" \
+        --bind "s:execute-silent($cmd_sudo_toggle)+reload($cmd_reload)" \
+        > /dev/null
+    
+    tput cnorm 2>/dev/null || true
+    
+    # Post-Loop Execution Logic
+        # Read Sudo State
+        if grep -q "__SUDO__=true" "$STATE_FILE"; then
+            USE_SUDO=true
+        else
+            USE_SUDO=false
+        fi
+
+        # Read the state file and execute
+        local inst=$(grep '=1$' "$STATE_FILE" 2>/dev/null | cut -d= -f1 | tr '\n' ' ')
+        local rem=$(grep '=2$' "$STATE_FILE" 2>/dev/null | cut -d= -f1 | tr '\n' ' ')
+         
+        if [[ -z "$inst" && -z "$rem" ]]; then
+             echo "${YELLOW}No packages selected${RESET}"
+             exit 0
+        fi
+
+        echo
+        local cmd="pget -c"
+        [[ "$USE_SUDO" == true ]] && cmd+=" -s"
+        [[ -n "$inst" ]] && cmd+=" -i $inst"
+        [[ -n "$rem" ]] && cmd+=" -r $rem"
+         
+        echo "${CYAN}> Executing...${RESET}"
+        eval "$cmd"
+        exit 0
 }
 
 main() {
