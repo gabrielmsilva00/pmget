@@ -288,7 +288,7 @@ _internal_gen_list() {
         pkg = arr[1]; display = (arr[2] == "" ? pkg : arr[2])
         s = state[pkg]; is_inst = installed[pkg]; is_upgr = upgradeable[pkg]
         
-        sym = "[ ]"; col = ""; rst = RESET
+        sym = "[ ]"; col = RESET; rst = RESET
         
         if (s == "1") { sym = "[+]"; col = BOLD GREEN }
         else if (s == "2") { sym = "[-]"; col = BOLD RED }
@@ -296,7 +296,7 @@ _internal_gen_list() {
         else if (is_inst) { sym = "[✓]"; col = BOLD BLUE }
         
         # Display [sym] pkg-name (hide description, keep for search)
-        printf "%s\t%s%s %-s\t%s%s\n", pkg, col, sym, pkg, display, rst
+        printf "%s\t%s%s %s%s\t%s%s\n", pkg, col, sym, pkg, rst, display, rst
     }
     ' "$pkg_file"
 }
@@ -318,7 +318,7 @@ EOF
     local cmd_toggle="$helper_cmd update-state '$STATE_FILE' {1} toggle_or_select"
     local cmd_reload="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE'"
     
-    local cmd_preview="[[ -n \"{1}\" ]] && bash \"$HELPER_SCRIPT\" info \"{1}\""
+    local cmd_preview="bash '$HELPER_SCRIPT' info {1}"
     local cmd_sudo_toggle="$helper_cmd toggle-sudo '$STATE_FILE'"
 
     # Enter Non-canonical mode to prevent escape sequence leakage (per user insight)
