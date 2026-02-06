@@ -27,16 +27,14 @@ cleanup() {
 trap cleanup EXIT INT
 
 detect_pm() {
-    # Hierarchy: Feature-rich wrappers first, then native engines.
-    # This balances power (wrappers) with stability (engines).
-    for pm in nala pkg yay paru pikaur apt dnf pacman zypper apk xbps-query; do
+    for pm in apt dnf pacman zypper apk; do
         if command -v "$pm" &>/dev/null; then
             DETECTED_PM="$pm"
             PM_PATH=$(command -v "$pm")
             return 0
         fi
     done
-    echo "${RED}Error: No supported package manager found.${RESET}" >&2
+    echo "${RED}Error: No supported package manager found (apt/dnf/pacman/zypper/apk).${RESET}" >&2
     exit 1
 }
 
@@ -44,16 +42,10 @@ run_pm() {
     local action="$1"; shift; local cmd=()
     [[ "$USE_SUDO" == true ]] && cmd+=(sudo)
     case "$DETECTED_PM:$action" in
-        pkg:install)    cmd+=(pkg install -y "$@") ;;
-        pkg:remove)     cmd+=(pkg uninstall -y "$@") ;;
-        nala:install)   cmd+=(nala install -y "$@") ;;
-        nala:remove)    cmd+=(nala remove -y "$@") ;;
         apt:install)    cmd+=(apt install -y "$@") ;;
         apt:remove)     cmd+=(apt remove -y "$@") ;;
         dnf:install)    cmd+=(dnf install -y "$@") ;;
         dnf:remove)     cmd+=(dnf remove -y "$@") ;;
-        yum:install)    cmd+=(yum install -y "$@") ;;
-        yum:remove)     cmd+=(yum remove -y "$@") ;;
         pacman:install) cmd+=(pacman -S --noconfirm "$@") ;;
         pacman:remove)  cmd+=(pacman -R --noconfirm "$@") ;;
         zypper:install) cmd+=(zypper install -y "$@") ;;
@@ -66,22 +58,18 @@ run_pm() {
 
 fetch_packages() {
     case "$DETECTED_PM" in
-        pkg|nala|apt) 
-            # Use apt-cache search to get descriptions, format: pkg [TAB] pkg - description
-            apt-cache search . 2>/dev/null | awk -F' - ' '{print $1 "\t" $0}' | sort -u ;;
+        apt)      apt-cache search . 2>/dev/null | awk -F' - ' '{print $1 "\t" $0}' | sort -u ;;
         dnf)      dnf repoquery --qf '%{name}\t%{name} - %{summary}' 2>/dev/null ;;
-        yum)      yum list available 2>/dev/null | awk 'NR>1 {print $1 "\t" $0}' | cut -d. -f1 ;;
         pacman)   pacman -Slq 2>/dev/null | awk '{print $1 "\t" $1}' ;;
         zypper)   zypper packages 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3);print $3 "\t" $3}' ;;
-        apk)      apk search -v 2>/dev/null | awk '{print $1 "\t" $0}' | sed 's/ - / /' ;; 
+        apk)      apk search -v 2>/dev/null | awk '{print $1 "\t" $0}' | sed 's/ - / /' ;;
     esac
 }
 
 fetch_installed() {
     case "$DETECTED_PM" in
-        pkg)      pkg list-installed 2>/dev/null | cut -d/ -f1 ;;
-        nala|apt) dpkg-query -W -f='${Package}\n' 2>/dev/null ;;
-        dnf|yum)  rpm -qa --queryformat '%{NAME}\n' 2>/dev/null ;;
+        apt)      dpkg-query -W -f='${Package}\n' 2>/dev/null ;;
+        dnf)      rpm -qa --queryformat '%{NAME}\n' 2>/dev/null ;;
         pacman)   pacman -Qq 2>/dev/null ;;
         zypper)   rpm -qa --queryformat '%{NAME}\n' 2>/dev/null ;;
         apk)      apk info -q 2>/dev/null ;;
@@ -90,10 +78,8 @@ fetch_installed() {
 
 fetch_upgradeable() {
     case "$DETECTED_PM" in
-        pkg)      pkg list-upgradable 2>/dev/null | cut -d/ -f1 ;;
-        nala|apt) apt list --upgradeable 2>/dev/null | grep '/' | cut -d/ -f1 ;;
+        apt)      apt list --upgradeable 2>/dev/null | grep '/' | cut -d/ -f1 ;;
         dnf)      dnf list updates -q 2>/dev/null | awk 'NR>1{print $1}' | cut -d. -f1 ;;
-        yum)      yum list updates -q 2>/dev/null | awk 'NR>1{print $1}' | cut -d. -f1 ;;
         pacman)   pacman -Quq 2>/dev/null ;;
         zypper)   zypper list-updates 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3);print $3}' ;;
         apk)      apk version -u -q 2>/dev/null | cut -d- -f1 ;;
@@ -103,11 +89,8 @@ fetch_upgradeable() {
 show_info() {
     echo -e "${BOLD}${CYAN}Package Info:${RESET}\n"
     case "$DETECTED_PM" in
-        pkg)      pkg show "$1" 2>/dev/null ;;
-        nala)     nala show "$1" 2>/dev/null ;;
-        apt)      apt show "$1" 2>/dev/null ;;
+        apt)      apt-cache show "$1" 2>/dev/null | grep -Ev '^(Section:|Priority:|Installed|Essential:|SHA1:|SHA256:|SHA512:|MD5sum:|Filename:|Size:|Task:)' ;;
         dnf)      dnf info "$1" 2>/dev/null ;;
-        yum)      yum info "$1" 2>/dev/null ;;
         pacman)   pacman -Si "$1" 2>/dev/null || pacman -Qi "$1" 2>/dev/null ;;
         zypper)   zypper info "$1" 2>/dev/null ;;
         apk)      apk info -a "$1" 2>/dev/null ;;
@@ -236,17 +219,12 @@ _info() {
     local pkg="$3"
     echo -e "\033[1m\033[36mPackage Information:\033[0m\n"
     
-    # Use the optimal command for each tool (wrappers or native)
     case "$pm_name" in
-        nala)         "$pm_path" show "$pkg" 2>/dev/null ;;
-        pkg)          "$pm_path" show "$pkg" 2>/dev/null ;;
-        yay|paru|pikaur) "$pm_path" -Si "$pkg" 2>/dev/null || "$pm_path" -Qi "$pkg" 2>/dev/null ;;
-        apt)          "$pm_path" show "$pkg" 2>/dev/null || apt-cache show "$pkg" 2>/dev/null ;;
-        dnf|yum)      "$pm_path" info "$pkg" 2>/dev/null ;;
-        pacman)       "$pm_path" -Si "$pkg" 2>/dev/null || "$pm_path" -Qi "$pkg" 2>/dev/null ;;
-        zypper)       "$pm_path" info "$pkg" 2>/dev/null ;;
-        apk)          "$pm_path" search -v -d "$pkg" 2>/dev/null || "$pm_path" info "$pkg" 2>/dev/null ;;
-        xbps-query)   "$pm_path" -Ri "$pkg" 2>/dev/null || "$pm_path" -i "$pkg" 2>/dev/null ;;
+        apt)    apt-cache show "$pkg" 2>/dev/null | grep -Ev '^(Section:|Priority:|Installed|Essential:|SHA1:|SHA256:|SHA512:|MD5sum:|Filename:|Size:|Task:)' ;;
+        dnf)    "$pm_path" info "$pkg" 2>/dev/null ;;
+        pacman) "$pm_path" -Si "$pkg" 2>/dev/null || "$pm_path" -Qi "$pkg" 2>/dev/null ;;
+        zypper) "$pm_path" info "$pkg" 2>/dev/null ;;
+        apk)    "$pm_path" info -a "$pkg" 2>/dev/null ;;
     esac
 }
 
@@ -278,10 +256,10 @@ _internal_gen_list() {
         GREEN="\033[32m"; RED="\033[31m"; YELLOW="\033[33m"; BLUE="\033[34m"
         CYAN="\033[36m"; BOLD="\033[1m"; RESET="\033[0m"
         
-        # Header and Legends
-        printf "%s%s  SUDO: %s%s%s\n", BOLD, CYAN, RESET, BOLD, (sudo_on ? GREEN "ON" : RED "OFF")
-        printf "%s%s  KEYS: %s(Tab: Sudo | Space: Select | Enter: Apply)\n", BOLD, CYAN, RESET
-        printf "%s%s  SYMBOLS: %s[ ] None  [✓] Inst  [^] Upgr  [+] Add  [-] Rem\n", BOLD, CYAN, RESET
+        # Header and Legends (first field is dummy for --with-nth=2)
+        printf "_\t%s%s  SUDO: %s%s%s\n", BOLD, CYAN, RESET, BOLD, (sudo_on ? GREEN "ON" : RED "OFF")
+        printf "_\t%s%s  KEYS: %s(Tab: Sudo | Space: Select | Enter: Apply)\n", BOLD, CYAN, RESET
+        printf "_\t%s%s  SYMBOLS: %s[ ] None  [✓] Inst  [^] Upgr  [+] Add  [-] Rem\n", BOLD, CYAN, RESET
     }
     {
         split($0, arr, "\t")
