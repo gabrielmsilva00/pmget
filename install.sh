@@ -13,7 +13,7 @@ URL="https://raw.githubusercontent.com/gabrielmsilva00/pmget/main"
 INSTALL_MODE=""
 NEED_SUDO=false
 MISSING_DEPS=()
-VERSION="1.1.4"
+VERSION="1.1.5"
 
 # Parse arguments
 for arg in "$@"; do
