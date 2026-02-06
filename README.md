@@ -8,7 +8,7 @@
 curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash -s -- --self-install
 ```
 
-This installs `pmget` to `~/.local/bin` by default. For other locations:
+###### This installs `pmget` to `~/.local/bin` by default. For other locations:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash -s -- --self-install --usr     # /usr/local/bin (requires sudo)
@@ -70,7 +70,7 @@ pmget --self-install     # Update pmget itself
 ## Uninstall
 
 ```bash
-rm ~/.local/bin/pmget
+rm $(which pmget)
 ```
 
 ## License

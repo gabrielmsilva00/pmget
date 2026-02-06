@@ -403,15 +403,48 @@ _internal_state_mod() {
     local sf="$1"
     local pkg="$2"
     local dir="$3"
+    local inst_file="$4"
+    local upgr_file="$5"
     local s=$(_get_state "$sf" "$pkg")
     
+    # Determine package status
+    local is_inst=0 is_upgr=0
+    grep -qxF "$pkg" "$inst_file" 2>/dev/null && is_inst=1
+    grep -qxF "$pkg" "$upgr_file" 2>/dev/null && is_upgr=1
+    
     local new_s=0
-    if [[ "$dir" == "next" ]]; then
-        new_s=$(( (s + 1) % 3 ))
+    if [[ "$dir" == "next" || "$dir" == "toggle_or_select" ]]; then
+        if [[ $is_inst -eq 0 ]]; then
+            # NOT installed: cycle 0 -> 1 -> 0 (none <-> install)
+            if [[ "$s" == "0" ]]; then new_s=1; else new_s=0; fi
+        elif [[ $is_upgr -eq 1 ]]; then
+            # Installed AND upgradeable: cycle 0 -> 3 -> 2 -> 0 (none -> upgrade -> uninstall -> none)
+            case "$s" in
+                0) new_s=3 ;;
+                3) new_s=2 ;;
+                2) new_s=0 ;;
+                *) new_s=0 ;;
+            esac
+        else
+            # Installed but NOT upgradeable: cycle 0 -> 2 -> 0 (none <-> uninstall)
+            if [[ "$s" == "0" ]]; then new_s=2; else new_s=0; fi
+        fi
     elif [[ "$dir" == "prev" ]]; then
-        new_s=$(( (s + 2) % 3 ))
-    elif [[ "$dir" == "toggle_or_select" ]]; then
-         if [[ "$s" == "0" ]]; then new_s=1; else new_s=$(( (s + 1) % 3 )); fi
+        if [[ $is_inst -eq 0 ]]; then
+            # NOT installed: cycle 1 -> 0 -> 1
+            if [[ "$s" == "0" ]]; then new_s=1; else new_s=0; fi
+        elif [[ $is_upgr -eq 1 ]]; then
+            # Installed AND upgradeable: cycle 0 -> 2 -> 3 -> 0
+            case "$s" in
+                0) new_s=2 ;;
+                2) new_s=3 ;;
+                3) new_s=0 ;;
+                *) new_s=0 ;;
+            esac
+        else
+            # Installed but NOT upgradeable: cycle 2 -> 0 -> 2
+            if [[ "$s" == "0" ]]; then new_s=2; else new_s=0; fi
+        fi
     fi
     _set_state "$sf" "$pkg" "$new_s"
 }
@@ -461,8 +494,8 @@ _internal_gen_list() {
         
         # Header and Legends (first field is dummy for --with-nth=2)
         printf "_\t%s%s  SUDO: %s%s%s\n", BOLD, CYAN, RESET, BOLD, (sudo_on ? GREEN "ON" : RED "OFF")
-        printf "_\t%s%s  KEYS: %s(Tab: Sudo | Space: Select | Enter: Apply)\n", BOLD, CYAN, RESET
-        printf "_\t%s%s  SYMBOLS: %s[ ] None  [✓] Inst  [^] Upgr  [+] Add  [-] Rem\n", BOLD, CYAN, RESET
+        printf "_\t%s%s  KEYS: %s(Tab: Sudo | ←/→/Space: Cycle | Enter: Apply | Esc: Exit)\n", BOLD, CYAN, RESET
+        printf "_\t%s%s  SYMBOLS: %s[ ] None  [✓] Inst  [^] Upgr  [+] Add  [-] Rem  [↑] Upgr\n", BOLD, CYAN, RESET
     }
     {
         split($0, arr, "\t")
@@ -473,6 +506,7 @@ _internal_gen_list() {
         
         if (s == "1") { sym = "[+]"; col = BOLD GREEN }
         else if (s == "2") { sym = "[-]"; col = BOLD RED }
+        else if (s == "3") { sym = "[↑]"; col = BOLD CYAN }
         else if (is_upgr) { sym = "[^]"; col = BOLD YELLOW }
         else if (is_inst) { sym = "[✓]"; col = BOLD BLUE }
         
@@ -484,7 +518,7 @@ _internal_gen_list() {
 
 case "$1" in
     gen-list)     _internal_gen_list "$2" "$3" "$4" "$5" ;;
-    update-state) _internal_state_mod "$2" "$3" "$4" ;;
+    update-state) _internal_state_mod "$2" "$3" "$4" "$5" "$6" ;;
     toggle-sudo)  _toggle_sudo "$2" ;;
     info)         _info "$DETECTED_PM" "$PM_PATH" "$2" ;;
 esac
@@ -494,9 +528,9 @@ EOF
     # Field 1 is the package ID (always clean), Field 2+ is for display.
     local helper_cmd="bash '$HELPER_SCRIPT'"
     
-    local cmd_update_next="$helper_cmd update-state '$STATE_FILE' {1} next"
-    local cmd_update_prev="$helper_cmd update-state '$STATE_FILE' {1} prev"
-    local cmd_toggle="$helper_cmd update-state '$STATE_FILE' {1} toggle_or_select"
+    local cmd_update_next="$helper_cmd update-state '$STATE_FILE' {1} next '$INST_FILE' '$UPGR_FILE'"
+    local cmd_update_prev="$helper_cmd update-state '$STATE_FILE' {1} prev '$INST_FILE' '$UPGR_FILE'"
+    local cmd_toggle="$helper_cmd update-state '$STATE_FILE' {1} toggle_or_select '$INST_FILE' '$UPGR_FILE'"
     local cmd_reload="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE'"
     
     local cmd_preview="bash '$HELPER_SCRIPT' info {1}"
@@ -509,50 +543,121 @@ EOF
     fi
     tput civis 2>/dev/null || true
     
-    # Initial Generation
-    bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" "$INST_FILE" "$UPGR_FILE" | \
-    fzf --ansi --no-multi \
-        --prompt="pmget> " \
-        --delimiter=$'\t' \
-        --with-nth=2 \
-        --header-lines=3 \
-        --tiebreak=begin,length \
-        --preview="$cmd_preview" \
-        --preview-window="top:40%" \
-        --layout=reverse \
-        --info=inline \
-        --no-bold \
-        --bind "right:execute-silent($cmd_update_next)+reload($cmd_reload)" \
-        --bind "left:execute-silent($cmd_update_prev)+reload($cmd_reload)" \
-        --bind "space:execute-silent($cmd_toggle)+reload($cmd_reload)" \
-        --bind "tab:execute-silent($cmd_sudo_toggle)+reload($cmd_reload)" \
-        --bind "alt-enter:print-query" \
-        > /dev/null
+    # TUI Loop with confirmation flows
+    local fzf_exit_code=0
+    while true; do
+        # Initial Generation
+        bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" "$INST_FILE" "$UPGR_FILE" | \
+        fzf --ansi --no-multi \
+            --prompt="pmget> " \
+            --delimiter=$'\t' \
+            --with-nth=2 \
+            --header-lines=3 \
+            --tiebreak=begin,length \
+            --preview="$cmd_preview" \
+            --preview-window="top:40%" \
+            --layout=reverse \
+            --info=inline \
+            --no-bold \
+            --bind "right:execute-silent($cmd_update_next)+reload($cmd_reload)" \
+            --bind "left:execute-silent($cmd_update_prev)+reload($cmd_reload)" \
+            --bind "space:execute-silent($cmd_toggle)+reload($cmd_reload)" \
+            --bind "tab:execute-silent($cmd_sudo_toggle)+reload($cmd_reload)" \
+            --bind "enter:accept" \
+            > /dev/null
+        
+        fzf_exit_code=$?
+        
+        # Reset terminal temporarily for prompts
+        [[ -n "${st_orig:-}" ]] && stty "$st_orig" 2>/dev/null || true
+        tput cnorm 2>/dev/null || true
+        
+        # Handle Esc (exit code 130 or 1)
+        if [[ $fzf_exit_code -ne 0 ]]; then
+            echo
+            echo "${YELLOW}Exit without changes?${RESET}"
+            echo -n "  Press ${BOLD}Enter${RESET} to confirm, ${BOLD}Esc${RESET} to go back: "
+            
+            # Read single keypress
+            local key
+            read -rsn1 key
+            
+            if [[ -z "$key" ]]; then
+                # Enter pressed - exit without changes
+                echo
+                echo "${CYAN}Exited without changes.${RESET}"
+                return 0
+            else
+                # Any other key (including Esc) - go back to TUI
+                echo
+                # Restore non-canonical mode for fzf
+                if [[ -t 0 ]]; then
+                    stty -icanon -echo
+                fi
+                tput civis 2>/dev/null || true
+                continue
+            fi
+        fi
+        
+        # Handle Enter - show confirmation
+        if grep -q "__SUDO__=true" "$STATE_FILE"; then
+            USE_SUDO=true
+        else
+            USE_SUDO=false
+        fi
+
+        local inst=$(grep '=1$' "$STATE_FILE" 2>/dev/null | cut -d= -f1 | tr '\n' ' ')
+        local rem=$(grep '=2$' "$STATE_FILE" 2>/dev/null | cut -d= -f1 | tr '\n' ' ')
+        local upgr=$(grep '=3$' "$STATE_FILE" 2>/dev/null | cut -d= -f1 | tr '\n' ' ')
+         
+        if [[ -z "$inst" && -z "$rem" && -z "$upgr" ]]; then
+             echo
+             echo "${YELLOW}No packages selected${RESET}"
+             return 0
+        fi
+
+        # Show summary and ask for confirmation
+        echo
+        echo "${BOLD}${CYAN}Pending Changes:${RESET}"
+        [[ -n "$inst" ]] && echo "  ${GREEN}Install:${RESET} $inst"
+        [[ -n "$rem" ]] && echo "  ${RED}Remove:${RESET} $rem"
+        [[ -n "$upgr" ]] && echo "  ${CYAN}Upgrade:${RESET} $upgr"
+        [[ "$USE_SUDO" == true ]] && echo "  ${YELLOW}Sudo:${RESET} enabled"
+        echo
+        echo -n "Press ${BOLD}Enter${RESET} to proceed, ${BOLD}Esc${RESET} to go back: "
+        
+        # Read single keypress
+        local key
+        read -rsn1 key
+        
+        if [[ -z "$key" ]]; then
+            # Enter pressed - proceed with execution
+            echo
+            break
+        else
+            # Any other key (including Esc) - go back to TUI
+            echo
+            # Restore non-canonical mode for fzf
+            if [[ -t 0 ]]; then
+                stty -icanon -echo
+            fi
+            tput civis 2>/dev/null || true
+            continue
+        fi
+    done
     
     # Reset terminal
     [[ -n "${st_orig:-}" ]] && stty "$st_orig" 2>/dev/null || true
     tput cnorm 2>/dev/null || true
     
-    # Post-Loop Execution Logic
-    if grep -q "__SUDO__=true" "$STATE_FILE"; then
-        USE_SUDO=true
-    else
-        USE_SUDO=false
-    fi
-
-    local inst=$(grep '=1$' "$STATE_FILE" 2>/dev/null | cut -d= -f1 | tr '\n' ' ')
-    local rem=$(grep '=2$' "$STATE_FILE" 2>/dev/null | cut -d= -f1 | tr '\n' ' ')
-     
-    if [[ -z "$inst" && -z "$rem" ]]; then
-         echo "${YELLOW}No packages selected${RESET}"
-         exit 0
-    fi
-
+    # Execute changes
     echo
     local cmd="pmget -c"
     [[ "$USE_SUDO" == true ]] && cmd+=" -s"
     [[ -n "$inst" ]] && cmd+=" -i $inst"
     [[ -n "$rem" ]] && cmd+=" -r $rem"
+    # Upgrades are treated as installs (package managers handle upgrades via install)
+    [[ -n "$upgr" ]] && cmd+=" -i $upgr"
      
     echo "${CYAN}> Executing...${RESET}"
     eval "$cmd"
