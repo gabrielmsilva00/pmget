@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pget - Package Getter (https://github.com/gabrielmsilva00/pget)
 
-VERSION="1.1.3"
+VERSION="1.1.4"
 
 # Colors
 BOLD=$(tput bold 2>/dev/null) || BOLD=""
@@ -180,8 +180,16 @@ run_tui() {
     echo " ${GREEN}OK${RESET} ($(wc -l < "$PKG_FILE" | tr -d ' ') items)"
 
     # Generate Helper Script
-    cat > "$HELPER_SCRIPT" <<'EOF'
+    # Part 1: Static Variables (Unquoted Heredoc for Expansion)
+    cat > "$HELPER_SCRIPT" <<EOF
 #!/usr/bin/env bash
+DETECTED_PM="$DETECTED_PM"
+PM_PATH="$PM_PATH"
+
+EOF
+
+    # Part 2: Functions and Logic (Quoted Heredoc to protect awk/regex)
+    cat >> "$HELPER_SCRIPT" <<'EOF'
 
 _get_state() { grep "^$2=" "$1" 2>/dev/null | cut -d= -f2 || echo 0; }
 
