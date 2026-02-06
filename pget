@@ -165,15 +165,9 @@ run_tui() {
     
     touch "$STATE_FILE" "$INST_FILE" "$UPGR_FILE"
     
-    fetch_packages > "$PKG_FILE" & p1=$!
-    fetch_installed > "$INST_FILE" & p2=$!
-    fetch_upgradeable > "$UPGR_FILE" & p3=$!
-    
-    while kill -0 $p1 2>/dev/null || kill -0 $p2 2>/dev/null || kill -0 $p3 2>/dev/null; do
-        echo -n "."
-        sleep 0.5
-    done
-    wait
+    fetch_packages > "$PKG_FILE"
+    fetch_installed > "$INST_FILE"
+    fetch_upgradeable > "$UPGR_FILE"
     
     if [[ ! -s "$PKG_FILE" ]]; then
         echo " ${RED}Failed!${RESET}"
