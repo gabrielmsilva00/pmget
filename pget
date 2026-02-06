@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pget - Package Getter (https://github.com/gabrielmsilva00/pget)
 
-VERSION="1.0.8"
+VERSION="1.0.9"
 
 # Colors
 BOLD=$(tput bold 2>/dev/null) || BOLD=""
@@ -27,7 +27,8 @@ cleanup() {
 trap cleanup EXIT INT
 
 detect_pm() {
-    for pm in pkg nala apt dnf yum pacman zypper apk; do
+    # Prioritize native PMs over wrappers (apt/dnf vs nala/pkg/yum)
+    for pm in apt dnf pacman zypper apk nala pkg yum; do
         if command -v "$pm" &>/dev/null; then
             DETECTED_PM="$pm"
             return 0
@@ -223,11 +224,12 @@ _info() {
     local pm="$1"
     local pkg="$2"
     echo -e "\033[1m\033[36mPackage Information:\033[0m\n"
-    # Legacy uses apt show, we try that first then fall back
-    (apt show "$pkg" 2>/dev/null || pkg show "$pkg" 2>/dev/null || nala show "$pkg" 2>/dev/null || \
+    # Try multiple ways to get info, favoring direct tools
+    (apt-cache show "$pkg" 2>/dev/null || apt show "$pkg" 2>/dev/null || \
+     pkg show "$pkg" 2>/dev/null || nala show "$pkg" 2>/dev/null || \
      dnf info "$pkg" 2>/dev/null || yum info "$pkg" 2>/dev/null || \
-     pacman -Si "$pkg" 2>/dev/null || zypper info "$pkg" 2>/dev/null || \
-     apk info -a "$pkg" 2>/dev/null)
+     pacman -Si "$pkg" 2>/dev/null || pacman -Qi "$pkg" 2>/dev/null || \
+     zypper info "$pkg" 2>/dev/null || apk info -a "$pkg" 2>/dev/null)
 }
 
 _internal_gen_list() {
