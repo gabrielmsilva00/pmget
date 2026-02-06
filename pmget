@@ -63,7 +63,7 @@ self_install() {
     if [[ -n "$existing_pmget" ]]; then
         if grep -q "github.com/gabrielmsilva00/pmget" "$existing_pmget" 2>/dev/null; then
             local current_ver
-            current_ver=$("$existing_pmget" -v < /dev/null 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "?")
+            current_ver=$(PMGET_INSTALLING=1 "$existing_pmget" -v < /dev/null 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "?")
             if [[ "$current_ver" == "$VERSION" ]]; then
                 echo "${GREEN}✓${RESET} pmget v${VERSION} is already installed"
                 exit 0
@@ -174,14 +174,15 @@ self_install() {
 }
 
 # Detect if running from pipe (curl | bash) - auto-install mode
-# Skip if -v/--version or -h/--help is passed
-if [[ ! -t 0 && "${BASH_SOURCE[0]}" == "${0}" ]]; then
+# Skip if sentinel is set, or if -v/--version, -h/--help, --info is requested
+if [[ -z "$PMGET_INSTALLING" && ! -t 0 && "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    local skip_install=false
     for arg in "$@"; do
         case "$arg" in
-            -v|--version|-h|--help) exec bash "${BASH_SOURCE[0]}" "$@";;
+            -v|--version|-h|--help|--info) skip_install=true; break;;
         esac
     done
-    self_install "$@"
+    [[ "$skip_install" == false ]] && self_install "$@"
 fi
 
 # ============================================================================
@@ -409,51 +410,34 @@ _toggle_sudo() {
 }
 
 _internal_state_mod() {
-    local sf="$1"
-    local pkg="$2"
-    local dir="$3"
-    local inst_file="$4"
-    local upgr_file="$5"
+    local sf="$1" pkg="$2" dir="$3" inst_f="$4" upgr_f="$5"
     local s=$(_get_state "$sf" "$pkg")
-    s=${s:-0}
     
     # Determine package status
     local is_inst=0 is_upgr=0
-    grep -qxF "$pkg" "$inst_file" 2>/dev/null && is_inst=1
-    grep -qxF "$pkg" "$upgr_file" 2>/dev/null && is_upgr=1
+    grep -qxF "$pkg" "$inst_f" 2>/dev/null && is_inst=1
+    grep -qxF "$pkg" "$upgr_f" 2>/dev/null && is_upgr=1
     
     local new_s=0
     if [[ "$dir" == "next" || "$dir" == "toggle_or_select" ]]; then
         if [[ $is_inst -eq 0 ]]; then
-            # NOT installed: cycle 0 -> 1 -> 0 (none <-> install)
-            if [[ "$s" == "0" ]]; then new_s=1; else new_s=0; fi
+            # NOT installed: cycle none <-> install
+            [[ "$s" == "1" ]] && new_s=0 || new_s=1
         elif [[ $is_upgr -eq 1 ]]; then
-            # Installed AND upgradeable: cycle 0 -> 3 -> 2 -> 0 (none -> upgrade -> uninstall -> none)
-            case "$s" in
-                0) new_s=3 ;;
-                3) new_s=2 ;;
-                2) new_s=0 ;;
-                *) new_s=0 ;;
-            esac
+            # Installed AND upgradeable: cycle none -> upgrade -> uninstall -> none
+            if [[ "$s" == "3" ]]; then new_s=2; elif [[ "$s" == "2" ]]; then new_s=0; else new_s=3; fi
         else
-            # Installed but NOT upgradeable: cycle 0 -> 2 -> 0 (none <-> uninstall)
-            if [[ "$s" == "0" ]]; then new_s=2; else new_s=0; fi
+            # Installed but NOT upgradeable: cycle none <-> uninstall
+            [[ "$s" == "2" ]] && new_s=0 || new_s=2
         fi
     elif [[ "$dir" == "prev" ]]; then
         if [[ $is_inst -eq 0 ]]; then
-            # NOT installed: cycle 1 -> 0 -> 1
-            if [[ "$s" == "0" ]]; then new_s=1; else new_s=0; fi
+            [[ "$s" == "1" ]] && new_s=0 || new_s=1
         elif [[ $is_upgr -eq 1 ]]; then
-            # Installed AND upgradeable: cycle 0 -> 2 -> 3 -> 0
-            case "$s" in
-                0) new_s=2 ;;
-                2) new_s=3 ;;
-                3) new_s=0 ;;
-                *) new_s=0 ;;
-            esac
+            # cycle none -> uninstall -> upgrade -> none (rev)
+            if [[ "$s" == "2" ]]; then new_s=3; elif [[ "$s" == "3" ]]; then new_s=0; else new_s=2; fi
         else
-            # Installed but NOT upgradeable: cycle 2 -> 0 -> 2
-            if [[ "$s" == "0" ]]; then new_s=2; else new_s=0; fi
+            [[ "$s" == "2" ]] && new_s=0 || new_s=2
         fi
     fi
     _set_state "$sf" "$pkg" "$new_s"
