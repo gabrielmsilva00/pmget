@@ -73,6 +73,29 @@ fetch_packages() {
     esac
 }
 
+fetch_installed() {
+    case "$DETECTED_PM" in
+        pkg)      pkg list-installed 2>/dev/null | cut -d/ -f1 ;;
+        nala|apt) dpkg-query -W -f='${Package}\n' 2>/dev/null ;;
+        dnf|yum)  rpm -qa --queryformat '%{NAME}\n' 2>/dev/null ;;
+        pacman)   pacman -Qq 2>/dev/null ;;
+        zypper)   rpm -qa --queryformat '%{NAME}\n' 2>/dev/null ;;
+        apk)      apk info -q 2>/dev/null ;;
+    esac
+}
+
+fetch_upgradeable() {
+    case "$DETECTED_PM" in
+        pkg)      pkg list-upgradable 2>/dev/null | cut -d/ -f1 ;;
+        nala|apt) apt list --upgradeable 2>/dev/null | grep '/' | cut -d/ -f1 ;;
+        dnf)      dnf list updates -q 2>/dev/null | awk 'NR>1{print $1}' | cut -d. -f1 ;;
+        yum)      yum list updates -q 2>/dev/null | awk 'NR>1{print $1}' | cut -d. -f1 ;;
+        pacman)   pacman -Quq 2>/dev/null ;;
+        zypper)   zypper list-updates 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3);print $3}' ;;
+        apk)      apk version -u -q 2>/dev/null | cut -d- -f1 ;;
+    esac
+}
+
 show_info() {
     echo -e "${BOLD}${CYAN}Package Info:${RESET}\n"
     case "$DETECTED_PM" in
@@ -127,25 +150,36 @@ run_tui() {
     TMP_DIR=$(mktemp -d)
     PKG_FILE="$TMP_DIR/packages"
     STATE_FILE="$TMP_DIR/state"
+    INST_FILE="$TMP_DIR/installed"
+    UPGR_FILE="$TMP_DIR/upgradeable"
     HELPER_SCRIPT="$TMP_DIR/helper.sh"
     
     # Cleanup on exit
-    trap "rm -rf '$TMP_DIR'; tput cnorm 2>/dev/null || true" EXIT INT
+    trap "rm -rf '$TMP_DIR'; [[ -n \"${st_orig:-}\" ]] && stty \"\$st_orig\" 2>/dev/null; tput cnorm 2>/dev/null || true" EXIT INT
     
-    # Ensure state file exists
-    touch "$STATE_FILE"
-
-    # Initialize Sudo state
-    [[ "$USE_SUDO" == true ]] && echo "__SUDO__=true" >> "$STATE_FILE"
+    # Sudo Auto-Detection (per user request)
+    if [[ $EUID -eq 0 || "$USE_SUDO" == true ]]; then
+        USE_SUDO=true
+        echo "__SUDO__=true" >> "$STATE_FILE"
+    fi
     
-    fetch_packages > "$PKG_FILE"
+    touch "$STATE_FILE" "$INST_FILE" "$UPGR_FILE"
+    
+    fetch_packages > "$PKG_FILE" & p1=$!
+    fetch_installed > "$INST_FILE" & p2=$!
+    fetch_upgradeable > "$UPGR_FILE" & p3=$!
+    
+    while kill -0 $p1 2>/dev/null || kill -0 $p2 2>/dev/null || kill -0 $p3 2>/dev/null; do
+        echo -n "."
+        sleep 0.5
+    done
+    wait
     
     if [[ ! -s "$PKG_FILE" ]]; then
-        echo "${RED}Failed to load packages.${RESET}"
-        echo "Try checking your internet connection or running: ${DETECTED_PM} update"
+        echo " ${RED}Failed!${RESET}"
         exit 1
     fi
-    echo "${GREEN}OK${RESET} ($(wc -l < "$PKG_FILE" | tr -d ' ') items)"
+    echo " ${GREEN}OK${RESET} ($(wc -l < "$PKG_FILE" | tr -d ' ') items)"
 
     # Generate Helper Script
     cat > "$HELPER_SCRIPT" <<'EOF'
@@ -193,34 +227,44 @@ _internal_state_mod() {
 _internal_gen_list() {
     local pkg_file="$1"
     local state_file="$2"
-    awk -v state_file="$state_file" '
+    local inst_file="$3"
+    local upgr_file="$4"
+    awk -v state_file="$state_file" -v inst_file="$inst_file" -v upgr_file="$upgr_file" '
     BEGIN {
         sudo_on = 0
         while ((getline line < state_file) > 0) {
             split(line, parts, "=")
             if (parts[1] == "__SUDO__" && parts[2] == "true") sudo_on = 1
-            if (parts[1] !~ /^__/) {
-                state[parts[1]] = parts[2]
-            }
+            if (parts[1] !~ /^__/) state[parts[1]] = parts[2]
         }
         close(state_file)
-        GREEN="\033[32m"; RED="\033[31m"; RESET="\033[0m"; BOLD="\033[1m"; CYAN="\033[36m"
+        while ((getline line < inst_file) > 0) installed[line] = 1
+        close(inst_file)
+        while ((getline line < upgr_file) > 0) upgradeable[line] = 1
+        close(upgr_file)
+
+        GREEN="\033[32m"; RED="\033[31m"; YELLOW="\033[33m"; BLUE="\033[34m"
+        CYAN="\033[36m"; BOLD="\033[1m"; RESET="\033[0m"
         
         # Header line (pinned by fzf --header-lines=1)
-        printf BOLD CYAN "  SUDO: " RESET BOLD "%s   (Tab=Toggle | Space=Select | Enter=Exec)\n", (sudo_on ? GREEN "ON" : RED "OFF") RESET
+        printf BOLD CYAN "  SUDO: " RESET BOLD "%s   (Tab=Sudo | Space=Select | Enter=Exec)\n", (sudo_on ? GREEN "ON" : RED "OFF") RESET
     }
     {
-        s = state[$0]
-        # Format: ID \t DISPLAY
-        if (s == "1") printf "%s\t%s\n", $0, GREEN "[+] " RESET $0
-        else if (s == "2") printf "%s\t%s\n", $0, RED "[-] " RESET $0
-        else printf "%s\t%s\n", $0, "[ ] " $0
+        pkg = $0; s = state[pkg]; is_inst = installed[pkg]; is_upgr = upgradeable[pkg]
+        sym = "[ ]"; col = ""; rst = RESET
+        
+        if (s == "1") { sym = "[+]"; col = BOLD GREEN }
+        else if (s == "2") { sym = "[-]"; col = BOLD RED }
+        else if (is_upgr) { sym = "[^]"; col = BOLD YELLOW }
+        else if (is_inst) { sym = "[✓]"; col = BOLD BLUE }
+        
+        printf "%s\t%s%s %-s%s\n", pkg, col, sym, pkg, rst
     }
     ' "$pkg_file"
 }
 
 case "$1" in
-    gen-list)     _internal_gen_list "$2" "$3" ;;
+    gen-list)     _internal_gen_list "$2" "$3" "$4" "$5" ;;
     update-state) _internal_state_mod "$2" "$3" "$4" ;;
     toggle-sudo)  _toggle_sudo "$2" ;;
 esac
@@ -233,7 +277,7 @@ EOF
     local cmd_update_next="$helper_cmd update-state '$STATE_FILE' {1} next"
     local cmd_update_prev="$helper_cmd update-state '$STATE_FILE' {1} prev"
     local cmd_toggle="$helper_cmd update-state '$STATE_FILE' {1} toggle_or_select"
-    local cmd_reload="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE'"
+    local cmd_reload="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE'"
     
     local cmd_preview="[[ -n \"{1}\" ]] && $0 --info \"{1}\""
     local cmd_sudo_toggle="$helper_cmd toggle-sudo '$STATE_FILE'"
