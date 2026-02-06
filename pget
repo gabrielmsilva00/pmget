@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pget - Package Getter (https://github.com/gabrielmsilva00/pget)
 
-VERSION="1.0.6"
+VERSION="1.0.7"
 
 # Colors
 BOLD=$(tput bold 2>/dev/null) || BOLD=""
@@ -221,17 +221,12 @@ _internal_state_mod() {
 _info() {
     local pm="$1"
     local pkg="$2"
-    echo -e "\033[1m\033[36mPackage Info:\033[0m\n"
-    case "$pm" in
-        pkg)      pkg show "$pkg" 2>/dev/null ;;
-        nala)     nala show "$pkg" 2>/dev/null ;;
-        apt)      apt show "$pkg" 2>/dev/null ;;
-        dnf)      dnf info "$pkg" 2>/dev/null ;;
-        yum)      yum info "$pkg" 2>/dev/null ;;
-        pacman)   pacman -Si "$pkg" 2>/dev/null || pacman -Qi "$pkg" 2>/dev/null ;;
-        zypper)   zypper info "$pkg" 2>/dev/null ;;
-        apk)      apk info -a "$pkg" 2>/dev/null ;;
-    esac
+    echo -e "\033[1m\033[36mPackage Information:\033[0m\n"
+    # Legacy uses apt show, we try that first then fall back
+    (apt show "$pkg" 2>/dev/null || pkg show "$pkg" 2>/dev/null || nala show "$pkg" 2>/dev/null || \
+     dnf info "$pkg" 2>/dev/null || yum info "$pkg" 2>/dev/null || \
+     pacman -Si "$pkg" 2>/dev/null || zypper info "$pkg" 2>/dev/null || \
+     apk info -a "$pkg" 2>/dev/null)
 }
 
 _internal_gen_list() {
@@ -263,9 +258,9 @@ _internal_gen_list() {
         CYAN="\033[36m"; BOLD="\033[1m"; RESET="\033[0m"
         
         # Header and Legends
-        printf BOLD CYAN "  SUDO: " RESET BOLD "%s  " RESET, (sudo_on ? GREEN "ON" : RED "OFF")
-        printf CYAN "KEYS: " RESET "(Tab: Sudo | Space: Select | Enter: Apply)\n"
-        printf CYAN "  SYMBOLS: " RESET "[ ] None  [✓] Inst  [^] Upgr  [+] Add  [-] Rem\n"
+        printf "%s%s  SUDO: %s%s%s  %s", BOLD, CYAN, RESET, BOLD, (sudo_on ? GREEN "ON" : RED "OFF"), RESET
+        printf "%sKEYS: %s(Tab: Sudo | Space: Select | Enter: Apply)\n", CYAN, RESET
+        printf "%s  SYMBOLS: %s[ ] None  [✓] Inst  [^] Upgr  [+] Add  [-] Rem\n", CYAN, RESET
     }
     {
         pkg = $0; s = state[pkg]; is_inst = installed[pkg]; is_upgr = upgradeable[pkg]
