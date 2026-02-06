@@ -96,14 +96,7 @@ self_install() {
 
     echo
 
-    # Create directory
-    if [[ "$need_sudo" == true ]]; then
-        sudo mkdir -p "$install_dir"
-    else
-        mkdir -p "$install_dir"
-    fi
-
-    # Download pmget
+    # Download pmget first (before attempting any directory operations)
     local tmpfile
     tmpfile=$(mktemp)
     if ! curl -fsSL -H "Cache-Control: no-cache" "$PMGET_URL" -o "$tmpfile"; then
@@ -119,13 +112,39 @@ self_install() {
         exit 1
     fi
 
-    # Install
+    # Try to create directory and install
+    local install_success=false
+
     if [[ "$need_sudo" == true ]]; then
-        sudo mv "$tmpfile" "$install_dir/pmget"
-        sudo chmod +x "$install_dir/pmget"
-    else
-        mv "$tmpfile" "$install_dir/pmget"
-        chmod +x "$install_dir/pmget"
+        # Try with sudo first
+        echo "${CYAN}→${RESET} Attempting install with sudo..."
+        if sudo mkdir -p "$install_dir" 2>/dev/null && \
+           sudo cp "$tmpfile" "$install_dir/pmget" 2>/dev/null && \
+           sudo chmod +x "$install_dir/pmget" 2>/dev/null; then
+            install_success=true
+        else
+            echo "${YELLOW}⚠${RESET} Sudo failed, trying without sudo..."
+            need_sudo=false
+        fi
+    fi
+
+    if [[ "$install_success" == false ]]; then
+        # Try without sudo (either as fallback or default)
+        if mkdir -p "$install_dir" 2>/dev/null && \
+           mv "$tmpfile" "$install_dir/pmget" 2>/dev/null && \
+           chmod +x "$install_dir/pmget" 2>/dev/null; then
+            install_success=true
+        fi
+    fi
+
+    # Clean up temp file if still exists
+    rm -f "$tmpfile" 2>/dev/null
+
+    if [[ "$install_success" == false ]]; then
+        echo "${RED}✗ Installation failed${RESET}"
+        echo "  Could not write to: $install_dir"
+        echo "  Try: pmget --self-install --local"
+        exit 1
     fi
 
     echo "${GREEN}✓${RESET} Installed to $install_dir/pmget"
