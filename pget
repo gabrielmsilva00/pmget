@@ -225,8 +225,8 @@ esac
 EOF
     
     # Define Commands using bash to execute the helper script
-    # We strip ANSI codes to get clean package name for the update command
-    local get_pkg_name="echo {} | sed 's/\x1b\[[0-9;]*m//g' | awk '{print \$2}'"
+    # We strip ANSI codes and extract the package name after the '] ' prefix
+    local get_pkg_name="echo '{}' | awk -F'] ' '{print \$2}' | sed 's/\x1b\\[[0-9;]*m//g'"
     
     # We use 'bash' explicitly to avoid permission issues if chmod fails or noexec mount
     local helper_cmd="bash '$HELPER_SCRIPT'"
@@ -238,7 +238,7 @@ EOF
     
     # For preview we might still need a wrapped call to pget --info, or we can inline it if simple.
     # Re-calling pget is fine for info as it's a read-only op.
-    local cmd_preview="pkg=\$(echo {} | sed 's/\x1b\[[0-9;]*m//g' | awk '{print \$2}'); $0 --info \$pkg"
+    local cmd_preview="pkg=\$($get_pkg_name); $0 --info \$pkg"
     local cmd_sudo_toggle="$helper_cmd toggle-sudo '$STATE_FILE'"
 
     tput civis 2>/dev/null || true
