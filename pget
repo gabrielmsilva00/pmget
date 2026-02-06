@@ -246,8 +246,10 @@ _internal_gen_list() {
         GREEN="\033[32m"; RED="\033[31m"; YELLOW="\033[33m"; BLUE="\033[34m"
         CYAN="\033[36m"; BOLD="\033[1m"; RESET="\033[0m"
         
-        # Header line (pinned by fzf --header-lines=1)
-        printf BOLD CYAN "  SUDO: " RESET BOLD "%s   (Tab=Sudo | Space=Select | Enter=Exec)\n", (sudo_on ? GREEN "ON" : RED "OFF") RESET
+        # Header and Legends
+        printf BOLD CYAN "  SUDO: " RESET BOLD "%s  " RESET, (sudo_on ? GREEN "ON" : RED "OFF")
+        printf CYAN "KEYS: " RESET "(Tab: Sudo | Space: Select | Enter: Apply)\n"
+        printf CYAN "  SYMBOLS: " RESET "[ ] None  [✓] Inst  [^] Upgr  [+] Add  [-] Rem\n"
     }
     {
         pkg = $0; s = state[pkg]; is_inst = installed[pkg]; is_upgr = upgradeable[pkg]
@@ -279,7 +281,10 @@ EOF
     local cmd_toggle="$helper_cmd update-state '$STATE_FILE' {1} toggle_or_select"
     local cmd_reload="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE'"
     
-    local cmd_preview="[[ -n \"{1}\" ]] && $0 --info \"{1}\""
+    local SCRIPT_PATH
+    if [[ "$0" == /* ]]; then SCRIPT_PATH="$0"; else SCRIPT_PATH="$(pwd)/${0#./}"; fi
+    
+    local cmd_preview="[[ -n \"{1}\" ]] && \"$SCRIPT_PATH\" --info \"{1}\""
     local cmd_sudo_toggle="$helper_cmd toggle-sudo '$STATE_FILE'"
 
     # Enter Non-canonical mode to prevent escape sequence leakage (per user insight)
@@ -292,10 +297,10 @@ EOF
     # Initial Generation
     bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" "$INST_FILE" "$UPGR_FILE" | \
     fzf --ansi --no-multi \
-        --prompt="pget: " \
+        --prompt="pget> " \
         --delimiter=$'\t' \
         --with-nth=2.. \
-        --header-lines=1 \
+        --header-lines=2 \
         --preview="$cmd_preview" \
         --preview-window="top:40%" \
         --layout=reverse \
