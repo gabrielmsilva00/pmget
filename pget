@@ -18,25 +18,20 @@ DETECTED_PM=""
 
 readonly PKG_REGEX='^[a-zA-Z0-9][a-zA-Z0-9.+_-]*$'
 
-cleanup() {
-    tput cnorm 2>/dev/null || true
-}
+cleanup() { tput cnorm 2>/dev/null || true; }
 trap cleanup EXIT INT
 
 detect_pm() {
-    local -a pms=(pkg nala apt dpkg dnf yum pacman zypper apk)
-    for pm in "${pms[@]}"; do
+    for pm in pkg nala apt dpkg dnf yum pacman zypper apk; do
         command -v "$pm" &>/dev/null && { DETECTED_PM="$pm"; return 0; }
     done
-    echo "${RED}No supported package manager found${RESET}" >&2
-    exit 1
+    echo "${RED}No supported package manager found${RESET}" >&2; exit 1
 }
 
 run_pm() {
     local action="$1"; shift
     local cmd=()
     [[ "$USE_SUDO" == true ]] && cmd+=(sudo)
-    
     case "$DETECTED_PM:$action" in
         pkg:install)     cmd+=(pkg install -y "$@") ;;
         pkg:remove)      cmd+=(pkg uninstall -y "$@") ;;
@@ -84,17 +79,16 @@ list_installed() {
 }
 
 show_pkg_info() {
-    local pkg="$1"
-    echo -e "${BOLD}${CYAN}Package Information:${RESET}\n"
+    echo -e "${BOLD}${CYAN}Package Info:${RESET}\n"
     case "$DETECTED_PM" in
-        pkg)      pkg show "$pkg" 2>/dev/null ;;
-        nala)     nala show "$pkg" 2>/dev/null ;;
-        apt|dpkg) apt show "$pkg" 2>/dev/null ;;
-        dnf)      dnf info "$pkg" 2>/dev/null ;;
-        yum)      yum info "$pkg" 2>/dev/null ;;
-        pacman)   pacman -Si "$pkg" 2>/dev/null || pacman -Qi "$pkg" 2>/dev/null ;;
-        zypper)   zypper info "$pkg" 2>/dev/null ;;
-        apk)      apk info -a "$pkg" 2>/dev/null ;;
+        pkg)      pkg show "$1" 2>/dev/null ;;
+        nala)     nala show "$1" 2>/dev/null ;;
+        apt|dpkg) apt show "$1" 2>/dev/null ;;
+        dnf)      dnf info "$1" 2>/dev/null ;;
+        yum)      yum info "$1" 2>/dev/null ;;
+        pacman)   pacman -Si "$1" 2>/dev/null || pacman -Qi "$1" 2>/dev/null ;;
+        zypper)   zypper info "$1" 2>/dev/null ;;
+        apk)      apk info -a "$1" 2>/dev/null ;;
     esac
 }
 
@@ -103,20 +97,15 @@ show_help() {
 ${BOLD}pget${RESET} v${VERSION} - Package Getter
 
 ${BOLD}Usage:${RESET}
-  pget              TUI mode (install)
-  pget -r           TUI mode (remove)
-  pget -c -i <pkgs> CLI install
-  pget -c -r <pkgs> CLI remove
+  pget              TUI mode
+  pget -c -i <pkg>  CLI install
+  pget -c -r <pkg>  CLI remove
 
 ${BOLD}Options:${RESET}
-  -c    CLI mode
-  -s    Use sudo
-  -i    Install packages
-  -r    Remove packages (TUI: remove mode)
-  -v    Show version
-  -h    Help
+  -c  CLI mode    -s  sudo    -i  install    -r  remove
+  -v  version     -h  help
 
-${BOLD}TUI:${RESET} Tab=multi-select, Enter=confirm, ?=info
+${BOLD}TUI:${RESET} i=install mode, r=remove mode, Tab=select, Enter=confirm, s=sudo, x=execute
 EOF
     exit 0
 }
@@ -141,113 +130,116 @@ parse_args() {
         esac
         shift
     done
-    
-    # -r without -c means TUI remove mode
-    [[ "$CLI_MODE" == false && "$mode" == "r" ]] && TUI_MODE="remove" || TUI_MODE="install"
 }
 
 run_cli() {
-    local rc=0
-    echo "${BOLD}${CYAN}pget${RESET} (${DETECTED_PM})$([[ "$USE_SUDO" == true ]] && echo " ${CYAN}[sudo]${RESET}")"
+    echo "${BOLD}${CYAN}pget${RESET} (${DETECTED_PM})$([[ "$USE_SUDO" == true ]] && echo " [sudo]")"
     echo
+    local rc=0
     
-    if [[ ${#REMOVE_PKGS[@]} -gt 0 ]]; then
+    [[ ${#REMOVE_PKGS[@]} -gt 0 ]] && {
         echo "${RED}Removing:${RESET} ${REMOVE_PKGS[*]}"
-        run_pm remove "${REMOVE_PKGS[@]}" && echo "${GREEN}✓ Done${RESET}" || { echo "${RED}✗ Failed${RESET}"; rc=1; }
+        run_pm remove "${REMOVE_PKGS[@]}" && echo "${GREEN}✓${RESET}" || { echo "${RED}✗${RESET}"; rc=1; }
         echo
-    fi
-    
-    if [[ ${#INSTALL_PKGS[@]} -gt 0 ]]; then
-        echo "${GREEN}Installing:${RESET} ${INSTALL_PKGS[*]}"
-        run_pm install "${INSTALL_PKGS[@]}" && echo "${GREEN}✓ Done${RESET}" || { echo "${RED}✗ Failed${RESET}"; rc=1; }
-    fi
-    
-    [[ ${#INSTALL_PKGS[@]} -eq 0 && ${#REMOVE_PKGS[@]} -eq 0 ]] && {
-        echo "${YELLOW}No packages specified${RESET}"
-        rc=1
     }
+    
+    [[ ${#INSTALL_PKGS[@]} -gt 0 ]] && {
+        echo "${GREEN}Installing:${RESET} ${INSTALL_PKGS[*]}"
+        run_pm install "${INSTALL_PKGS[@]}" && echo "${GREEN}✓${RESET}" || { echo "${RED}✗${RESET}"; rc=1; }
+    }
+    
+    [[ ${#INSTALL_PKGS[@]} -eq 0 && ${#REMOVE_PKGS[@]} -eq 0 ]] && { echo "${YELLOW}No packages${RESET}"; rc=1; }
     exit $rc
 }
 
-run_tui() {
-    local mode="${TUI_MODE:-install}"
+select_packages() {
+    local mode="$1" prompt color src
+    
+    if [[ "$mode" == "install" ]]; then
+        prompt="${GREEN}[+] Install: ${RESET}"
+        src="list_packages"
+    else
+        prompt="${RED}[-] Remove: ${RESET}"
+        src="list_installed"
+    fi
     
     tput civis 2>/dev/null || true
-    
-    local packages
-    if [[ "$mode" == "install" ]]; then
-        packages=$(list_packages | fzf -m \
-            --prompt="${BOLD}${GREEN}Install: ${RESET}" \
-            --header="Tab: multi-select | Enter: confirm | ?: info" \
-            --preview="$0 --info {}" \
-            --preview-window="top:40%" \
-            --bind="?:toggle-preview" \
-            --info=inline \
-            --ansi | tr "\n" " ")
-    else
-        packages=$(list_installed | fzf -m \
-            --prompt="${BOLD}${RED}Remove: ${RESET}" \
-            --header="Tab: multi-select | Enter: confirm | ?: info" \
-            --preview="$0 --info {}" \
-            --preview-window="top:40%" \
-            --bind="?:toggle-preview" \
-            --info=inline \
-            --ansi | tr "\n" " ")
-    fi
-    
+    local selected=$($src | fzf -m \
+        --prompt="$prompt" \
+        --header="Tab: select | Enter: confirm | ?: info" \
+        --preview="$0 --info {}" \
+        --preview-window="top:40%" \
+        --bind="?:toggle-preview" \
+        --info=inline \
+        --ansi | tr "\n" " ")
     tput cnorm 2>/dev/null || true
     
-    if [[ -z "$packages" ]]; then
-        echo "${CYAN}No package selected${RESET}"
-        exit 0
-    fi
+    echo "$selected"
+}
+
+show_status() {
+    local sudo_txt=""
+    [[ "$USE_SUDO" == true ]] && sudo_txt=" ${CYAN}[sudo]${RESET}"
     
-    echo "Selected: $packages"
     echo
+    echo "${BOLD}${CYAN}pget${RESET} (${DETECTED_PM})${sudo_txt}"
+    [[ ${#INSTALL_PKGS[@]} -gt 0 ]] && echo "${GREEN}[+] Install:${RESET} ${INSTALL_PKGS[*]}"
+    [[ ${#REMOVE_PKGS[@]} -gt 0 ]] && echo "${RED}[-] Remove:${RESET} ${REMOVE_PKGS[*]}"
+    [[ ${#INSTALL_PKGS[@]} -eq 0 && ${#REMOVE_PKGS[@]} -eq 0 ]] && echo "${YELLOW}(no packages selected)${RESET}"
+}
+
+run_tui() {
+    echo "${BOLD}${CYAN}pget${RESET} (${DETECTED_PM})"
+    echo "${CYAN}i${RESET}=install ${CYAN}r${RESET}=remove ${CYAN}s${RESET}=sudo ${CYAN}x${RESET}=execute ${CYAN}c${RESET}=clear ${CYAN}q${RESET}=quit"
     
     while true; do
-        local sudo_txt=""
-        [[ "$USE_SUDO" == true ]] && sudo_txt=" ${CYAN}[sudo]${RESET}"
-        
-        if [[ "$mode" == "install" ]]; then
-            read -n1 -rp "Install?${sudo_txt} [Y/n/s/q]: " choice
-        else
-            read -n1 -rp "Remove?${sudo_txt} [Y/n/s/q]: " choice
-        fi
+        show_status
+        echo
+        read -n1 -rp "> " choice
         echo
         
         case "$choice" in
-            ""|y|Y)
-                echo
+            i|I)
+                local pkgs=$(select_packages install)
+                [[ -n "$pkgs" ]] && INSTALL_PKGS+=($pkgs)
+                ;;
+            r|R)
+                local pkgs=$(select_packages remove)
+                [[ -n "$pkgs" ]] && REMOVE_PKGS+=($pkgs)
+                ;;
+            s|S)
+                USE_SUDO=$([[ "$USE_SUDO" == true ]] && echo false || echo true)
+                echo "sudo: $USE_SUDO"
+                ;;
+            c|C)
+                INSTALL_PKGS=()
+                REMOVE_PKGS=()
+                echo "Cleared"
+                ;;
+            x|X)
+                [[ ${#INSTALL_PKGS[@]} -eq 0 && ${#REMOVE_PKGS[@]} -eq 0 ]] && { echo "${YELLOW}Nothing selected${RESET}"; continue; }
+                
                 local cmd="pget -c"
                 [[ "$USE_SUDO" == true ]] && cmd+=" -s"
-                [[ "$mode" == "install" ]] && cmd+=" -i $packages" || cmd+=" -r $packages"
+                [[ ${#INSTALL_PKGS[@]} -gt 0 ]] && cmd+=" -i ${INSTALL_PKGS[*]}"
+                [[ ${#REMOVE_PKGS[@]} -gt 0 ]] && cmd+=" -r ${REMOVE_PKGS[*]}"
+                
+                echo
                 echo "${CYAN}> ${cmd}${RESET}"
                 echo
                 eval "$cmd"
                 break
                 ;;
-            n|N) run_tui; break ;;
-            s|S)
-                USE_SUDO=$([[ "$USE_SUDO" == true ]] && echo false || echo true)
-                echo "sudo: $USE_SUDO"
-                ;;
-            q|Q) echo "${CYAN}Exit${RESET}"; break ;;
-            *) echo "${RED}Y/n/s/q${RESET}" ;;
+            q|Q|"") echo "${CYAN}Exit${RESET}"; break ;;
+            *) echo "${RED}i/r/s/x/c/q${RESET}" ;;
         esac
     done
 }
 
 main() {
-    TUI_MODE="install"
     parse_args "$@"
     detect_pm
-    
-    if [[ "$CLI_MODE" == true ]]; then
-        run_cli
-    else
-        run_tui
-    fi
+    [[ "$CLI_MODE" == true ]] && run_cli || run_tui
 }
 
 main "$@"
