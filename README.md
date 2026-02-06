@@ -4,82 +4,65 @@
 
 ## Install
 
-To install this utility tool, simply run:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/install.sh | bash
-```
-##### This will install `pmget` to `~/.local/bin` by default.
-
-To install system-wide, use the `--usr` or `--root` flags:
-```bash
-curl ... | bash -s -- --usr     # System-wide install
-curl ... | bash -s -- --root    # Root install
+curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash
 ```
 
-### Install Options
-
-| Flag | Location | Requires sudo |
-|------|----------|---------------|
-| `--local` | `~/.local/bin` (default) | No |
-| `--usr` | `/usr/local/bin` | Yes |
-| `--root` | `/root/.local/bin` | Yes |
+This installs `pmget` to `~/.local/bin` by default. For other locations:
 
 ```bash
-# Examples
-curl ... | bash -s -- --local   # User install (default)
-curl ... | bash -s -- --usr     # System-wide install
+curl ... | bash -s -- --usr     # /usr/local/bin (requires sudo)
+curl ... | bash -s -- --root    # /root/.local/bin (requires sudo)
 ```
 
-**Requires:** `fzf` and one of:
-- `pkg` (Termux)
-- `nala`
-- `apt`
-- `dpkg`
-- `dnf`
-- `yum`
-- `pacman`
-- `zypper`
-- `apk`
+**Requires:** `fzf` and one of: `apt`, `dnf`, `pacman`, `zypper`, `apk`
+
+To update, re-run the install command or use `pmget --self-install`.
 
 ## Usage
 
 ```bash
-pmget              # TUI mode
-pmget -s           # TUI with sudo
-pmget -c -i vim    # CLI: install vim
-pmget -c -r nano   # CLI: remove nano  
-pmget -c -s -i git -r vim   # Both operations with sudo
+pmget                    # TUI mode
+pmget -s                 # TUI with sudo
+pmget -c -i vim htop     # CLI: install packages
+pmget -c -r nano         # CLI: remove packages
+pmget --info curl        # Show package info
+pmget --self-install     # Update pmget itself
 ```
 
 ## Options
 
 | Flag | Description |
 |------|-------------|
-| `-c` | CLI mode (non-interactive) |
-| `-s` | Use sudo |
-| `-i` | Packages to install |
-| `-r` | Packages to remove |
-| `-v` | Show version |
-| `-h` | Help |
+| `-c, --cli` | CLI mode (non-interactive) |
+| `-s, --sudo` | Use sudo |
+| `-i PKG` | Packages to install |
+| `-r PKG` | Packages to remove |
+| `--info PKG` | Show package information |
+| `--self-install` | Install/update pmget |
+| `-v, --version` | Show version |
+| `-h, --help` | Help |
 
 ## TUI Controls
 
 | Key | Action |
 |-----|--------|
 | `↑`/`↓` | Navigate |
-| `Enter` | Select for install / Execute if selected |
-| `→` | Cycle: none → install → remove |
-| `←` | Cycle: none → remove → install |
-| `?` | Toggle info |
+| `→`/`←` | Cycle state: none → install → remove |
+| `Space` | Toggle selection |
+| `Tab` | Toggle sudo |
+| `Enter` | Execute |
 | `Esc` | Exit |
 
 ## States
 
-```
-[ ]  Not selected
-[+]  Install (green)
-[-]  Remove (red)
-```
+| Symbol | Meaning |
+|--------|---------|
+| `[ ]` | Not selected |
+| `[✓]` | Installed (blue) |
+| `[^]` | Upgradeable (yellow) |
+| `[+]` | Marked for install (green) |
+| `[-]` | Marked for remove (red) |
 
 ## Uninstall
 
