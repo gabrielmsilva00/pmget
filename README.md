@@ -8,6 +8,20 @@
 curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pget/main/install.sh | bash
 ```
 
+### Install Options
+
+| Flag | Location | Requires sudo |
+|------|----------|---------------|
+| `--local` | `~/.local/bin` (default) | No |
+| `--usr` | `/usr/local/bin` | Yes |
+| `--root` | `/root/.local/bin` | Yes |
+
+```bash
+# Examples
+curl ... | bash -s -- --local   # User install (default)
+curl ... | bash -s -- --usr     # System-wide install
+```
+
 **Requires:** `fzf` and one of:
 - `apt`
 - `dnf`
@@ -55,10 +69,6 @@ pget -c -s -i git -r vim   # Both operations with sudo
 [+]  Install (green)
 [-]  Remove (red)
 ```
-
-## Supported
-
-apt · dnf · yum · pacman · zypper · apk
 
 ## Uninstall
 

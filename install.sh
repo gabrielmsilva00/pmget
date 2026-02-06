@@ -10,10 +10,39 @@ C=$(tput setaf 6 2>/dev/null) || C=""
 Y=$(tput setaf 3 2>/dev/null) || Y=""
 
 URL="https://raw.githubusercontent.com/gabrielmsilva00/pget/main"
-DIR="$HOME/.local/bin"
 PM=""
+INSTALL_MODE=""
+NEED_SUDO=false
+
+# Parse arguments
+for arg in "$@"; do
+    case "$arg" in
+        --root|--usr|--local)
+            [[ -n "$INSTALL_MODE" ]] && { echo "${E}Error: Only one of --root, --usr, --local allowed${R}"; exit 1; }
+            INSTALL_MODE="${arg#--}"
+            ;;
+        -h|--help)
+            echo "Usage: install.sh [--root | --usr | --local]"
+            echo "  --local  Install to ~/.local/bin (default)"
+            echo "  --usr    Install to /usr/local/bin (requires sudo)"
+            echo "  --root   Install to /root/.local/bin (requires sudo)"
+            exit 0
+            ;;
+        *)
+            echo "${E}Unknown option: $arg${R}"; exit 1
+            ;;
+    esac
+done
+
+# Set install directory based on mode
+case "${INSTALL_MODE:-local}" in
+    local) DIR="$HOME/.local/bin" ;;
+    usr)   DIR="/usr/local/bin"; NEED_SUDO=true ;;
+    root)  DIR="/root/.local/bin"; NEED_SUDO=true ;;
+esac
 
 echo "${B}${C}pget installer${R}"
+echo "${C}Target:${R} $DIR"
 echo
 
 # Detect package manager first (required for dependency installation)
@@ -76,12 +105,17 @@ fi
 echo
 
 # Install pget
-mkdir -p "$DIR"
-curl -fsSL "$URL/pget" -o "$DIR/pget" && chmod +x "$DIR/pget" || { echo "${E}Download failed${R}"; exit 1; }
+if [[ "$NEED_SUDO" == true ]]; then
+    sudo mkdir -p "$DIR"
+    curl -fsSL "$URL/pget" | sudo tee "$DIR/pget" > /dev/null && sudo chmod +x "$DIR/pget" || { echo "${E}Download failed${R}"; exit 1; }
+else
+    mkdir -p "$DIR"
+    curl -fsSL "$URL/pget" -o "$DIR/pget" && chmod +x "$DIR/pget" || { echo "${E}Download failed${R}"; exit 1; }
+fi
 echo "${G}✓${R} Installed to $DIR/pget"
 
-# Configure PATH
-if [[ ":$PATH:" != *":$DIR:"* ]]; then
+# Configure PATH (skip for system directories - already in PATH)
+if [[ "$NEED_SUDO" == false && ":$PATH:" != *":$DIR:"* ]]; then
     SHELL_NAME=$(basename "$SHELL")
     case "$SHELL_NAME" in
         zsh)  RC="$HOME/.zshrc" ;;
