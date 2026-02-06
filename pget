@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pget - Package Getter (https://github.com/gabrielmsilva00/pget)
 
-VERSION="1.0.9"
+VERSION="1.1.2"
 
 # Colors
 BOLD=$(tput bold 2>/dev/null) || BOLD=""
@@ -27,10 +27,12 @@ cleanup() {
 trap cleanup EXIT INT
 
 detect_pm() {
-    # Prioritize native PMs over wrappers (apt/dnf vs nala/pkg/yum)
-    for pm in apt dnf pacman zypper apk nala pkg yum; do
+    # Hierarchy: Feature-rich wrappers first, then native engines.
+    # This balances power (wrappers) with stability (engines).
+    for pm in nala pkg yay paru pikaur apt dnf pacman zypper apk xbps-query; do
         if command -v "$pm" &>/dev/null; then
             DETECTED_PM="$pm"
+            PM_PATH=$(command -v "$pm")
             return 0
         fi
     done
@@ -221,15 +223,23 @@ _internal_state_mod() {
 }
  
 _info() {
-    local pm="$1"
-    local pkg="$2"
+    local pm_name="$1"
+    local pm_path="$2"
+    local pkg="$3"
     echo -e "\033[1m\033[36mPackage Information:\033[0m\n"
-    # Try multiple ways to get info, favoring direct tools
-    (apt-cache show "$pkg" 2>/dev/null || apt show "$pkg" 2>/dev/null || \
-     pkg show "$pkg" 2>/dev/null || nala show "$pkg" 2>/dev/null || \
-     dnf info "$pkg" 2>/dev/null || yum info "$pkg" 2>/dev/null || \
-     pacman -Si "$pkg" 2>/dev/null || pacman -Qi "$pkg" 2>/dev/null || \
-     zypper info "$pkg" 2>/dev/null || apk info -a "$pkg" 2>/dev/null)
+    
+    # Use the optimal command for each tool (wrappers or native)
+    case "$pm_name" in
+        nala)         "$pm_path" show "$pkg" 2>/dev/null ;;
+        pkg)          "$pm_path" show "$pkg" 2>/dev/null ;;
+        yay|paru|pikaur) "$pm_path" -Si "$pkg" 2>/dev/null || "$pm_path" -Qi "$pkg" 2>/dev/null ;;
+        apt)          "$pm_path" show "$pkg" 2>/dev/null || apt-cache show "$pkg" 2>/dev/null ;;
+        dnf|yum)      "$pm_path" info "$pkg" 2>/dev/null ;;
+        pacman)       "$pm_path" -Si "$pkg" 2>/dev/null || "$pm_path" -Qi "$pkg" 2>/dev/null ;;
+        zypper)       "$pm_path" info "$pkg" 2>/dev/null ;;
+        apk)          "$pm_path" search -v -d "$pkg" 2>/dev/null || "$pm_path" info "$pkg" 2>/dev/null ;;
+        xbps-query)   "$pm_path" -Ri "$pkg" 2>/dev/null || "$pm_path" -i "$pkg" 2>/dev/null ;;
+    esac
 }
 
 _internal_gen_list() {
@@ -261,9 +271,9 @@ _internal_gen_list() {
         CYAN="\033[36m"; BOLD="\033[1m"; RESET="\033[0m"
         
         # Header and Legends
-        printf "%s%s  SUDO: %s%s%s  %s", BOLD, CYAN, RESET, BOLD, (sudo_on ? GREEN "ON" : RED "OFF"), RESET
-        printf "%sKEYS: %s(Tab: Sudo | Space: Select | Enter: Apply)\n", CYAN, RESET
-        printf "%s  SYMBOLS: %s[ ] None  [✓] Inst  [^] Upgr  [+] Add  [-] Rem\n", CYAN, RESET
+        printf "%s%s  SUDO: %s%s%s\n", BOLD, CYAN, RESET, BOLD, (sudo_on ? GREEN "ON" : RED "OFF")
+        printf "%s%s  KEYS: %s(Tab: Sudo | Space: Select | Enter: Apply)\n", BOLD, CYAN, RESET
+        printf "%s%s  SYMBOLS: %s[ ] None  [✓] Inst  [^] Upgr  [+] Add  [-] Rem\n", BOLD, CYAN, RESET
     }
     {
         split($0, arr, "\t")
@@ -286,7 +296,7 @@ case "$1" in
     gen-list)     _internal_gen_list "$2" "$3" "$4" "$5" ;;
     update-state) _internal_state_mod "$2" "$3" "$4" ;;
     toggle-sudo)  _toggle_sudo "$2" ;;
-    info)         _info "$DETECTED_PM" "$2" ;;
+    info)         _info "$DETECTED_PM" "$PM_PATH" "$2" ;;
 esac
 EOF
     
@@ -299,7 +309,7 @@ EOF
     local cmd_toggle="$helper_cmd update-state '$STATE_FILE' {1} toggle_or_select"
     local cmd_reload="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE'"
     
-    local cmd_preview="[[ -n \"{1}\" ]] && DETECTED_PM='$DETECTED_PM' bash \"$HELPER_SCRIPT\" info \"{1}\""
+    local cmd_preview="[[ -n \"{1}\" ]] && bash \"$HELPER_SCRIPT\" info \"{1}\""
     local cmd_sudo_toggle="$helper_cmd toggle-sudo '$STATE_FILE'"
 
     # Enter Non-canonical mode to prevent escape sequence leakage (per user insight)
@@ -315,7 +325,7 @@ EOF
         --prompt="pget> " \
         --delimiter=$'\t' \
         --with-nth=2.. \
-        --header-lines=2 \
+        --header-lines=3 \
         --preview="$cmd_preview" \
         --preview-window="top:40%" \
         --layout=reverse \
