@@ -89,6 +89,33 @@ show_info() {
 
 
 
+
+parse_args() {
+    local mode=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -c|--cli)     CLI_MODE=true ;;
+            -s|--sudo)    USE_SUDO=true ;;
+            -i|--install) mode="i" ;;
+            -r|--remove)  mode="r" ;;
+            -v|--version) echo "pget v${VERSION}"; exit 0 ;;
+            -h|--help)    echo "pget v${VERSION}"; exit 0 ;;
+            --info)       detect_pm; show_info "$2"; exit 0 ;;
+            *) [[ "$mode" == "i" ]] && INSTALL_PKGS+=("$1"); [[ "$mode" == "r" ]] && REMOVE_PKGS+=("$1") ;;
+        esac
+        shift
+    done
+}
+
+run_cli() {
+    echo "${BOLD}${CYAN}pget${RESET} (${DETECTED_PM})$([[ "$USE_SUDO" == true ]] && echo " [sudo]")"
+    local rc=0
+    [[ ${#REMOVE_PKGS[@]} -gt 0 ]] && { echo "${RED}Removing:${RESET} ${REMOVE_PKGS[*]}"; run_pm remove "${REMOVE_PKGS[@]}" || rc=1; echo; }
+    [[ ${#INSTALL_PKGS[@]} -gt 0 ]] && { echo "${GREEN}Installing:${RESET} ${INSTALL_PKGS[*]}"; run_pm install "${INSTALL_PKGS[@]}" || rc=1; }
+    [[ ${#INSTALL_PKGS[@]} -eq 0 && ${#REMOVE_PKGS[@]} -eq 0 ]] && echo "${YELLOW}No packages selected${RESET}"
+    exit $rc
+}
+
 # ----------------------------------------------------
 # TUI Logic
 # ----------------------------------------------------
@@ -104,6 +131,9 @@ run_tui() {
     
     # Cleanup on exit
     trap "rm -rf '$TMP_DIR'; tput cnorm 2>/dev/null || true" EXIT INT
+    
+    # Ensure state file exists
+    touch "$STATE_FILE"
 
     # Initialize Sudo state
     [[ "$USE_SUDO" == true ]] && echo "__SUDO__=true" >> "$STATE_FILE"
