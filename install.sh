@@ -45,15 +45,34 @@ echo "${B}${C}pget installer${R}"
 echo "${C}Target:${R} $DIR"
 echo
 
+# Check for existing pget
+EXISTING_PGET=$(command -v pget 2>/dev/null)
+if [[ -n "$EXISTING_PGET" ]]; then
+    # Check if it's our pget by looking for signature
+    if grep -q "Package Getter" "$EXISTING_PGET" 2>/dev/null; then
+        if [[ "$EXISTING_PGET" == "$DIR/pget" ]]; then
+            echo "${C}→${R} Updating existing pget"
+        else
+            echo "${Y}!${R} pget already installed at: $EXISTING_PGET"
+            echo "  Will install to: $DIR/pget"
+        fi
+    else
+        echo "${Y}⚠${R} Different 'pget' binary found: $EXISTING_PGET"
+        echo "  This may conflict with our pget."
+        echo "  Will install to: $DIR/pget"
+    fi
+    echo
+fi
+
 # Check dependencies (no auto-install)
 command -v curl &>/dev/null && echo "${G}✓${R} curl" || { echo "${E}✗${R} curl (required)"; MISSING_DEPS+=("curl"); }
 command -v fzf &>/dev/null && echo "${G}✓${R} fzf" || { echo "${E}✗${R} fzf (required)"; MISSING_DEPS+=("fzf"); }
 
 PM=""
-for p in apt dnf yum pacman zypper apk; do
+for p in pkg nala apt dpkg dnf yum pacman zypper apk; do
     command -v "$p" &>/dev/null && { PM="$p"; echo "${G}✓${R} $p"; break; }
 done
-[[ -z "$PM" ]] && { echo "${E}✗${R} package manager (apt/dnf/yum/pacman/zypper/apk)"; MISSING_DEPS+=("package-manager"); }
+[[ -z "$PM" ]] && { echo "${E}✗${R} package manager (pkg/nala/apt/dpkg/dnf/yum/pacman/zypper/apk)"; MISSING_DEPS+=("package-manager"); }
 
 # Exit if missing dependencies
 if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then

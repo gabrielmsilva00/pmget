@@ -23,7 +23,10 @@ curl ... | bash -s -- --usr     # System-wide install
 ```
 
 **Requires:** `fzf` and one of:
+- `pkg` (Termux)
+- `nala`
 - `apt`
+- `dpkg`
 - `dnf`
 - `yum`
 - `pacman`

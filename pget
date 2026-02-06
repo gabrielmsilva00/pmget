@@ -23,7 +23,7 @@ validate_pkg() {
 }
 
 detect_pm() {
-    local -a pms=(apt dnf yum pacman zypper apk)
+    local -a pms=(pkg nala apt dpkg dnf yum pacman zypper apk)
     for pm in "${pms[@]}"; do
         command -v "$pm" &>/dev/null && { DETECTED_PM="$pm"; return 0; }
     done
@@ -37,8 +37,14 @@ run_pm() {
     [[ "$USE_SUDO" == true ]] && cmd+=(sudo)
     
     case "$DETECTED_PM:$action" in
+        pkg:install)     cmd+=(pkg install -y "$@") ;;
+        pkg:remove)      cmd+=(pkg uninstall -y "$@") ;;
+        nala:install)    cmd+=(nala install -y "$@") ;;
+        nala:remove)     cmd+=(nala remove -y "$@"); "${cmd[@]}" && { cmd=(nala autoremove -y); [[ "$USE_SUDO" == true ]] && cmd=(sudo "${cmd[@]}"); "${cmd[@]}"; return; } ;;
         apt:install)     cmd+=(apt install -y "$@") ;;
         apt:remove)      cmd+=(apt remove -y "$@"); "${cmd[@]}" && { cmd=(apt autoremove -y); [[ "$USE_SUDO" == true ]] && cmd=(sudo "${cmd[@]}"); "${cmd[@]}"; return; } ;;
+        dpkg:install)    cmd+=(dpkg -i "$@") ;;
+        dpkg:remove)     cmd+=(dpkg -r "$@") ;;
         dnf:install)     cmd+=(dnf install -y "$@") ;;
         dnf:remove)      cmd+=(dnf remove -y "$@") ;;
         yum:install)     cmd+=(yum install -y "$@") ;;
@@ -55,7 +61,9 @@ run_pm() {
 
 list_available() {
     case "$DETECTED_PM" in
-        apt)     apt-cache pkgnames 2>/dev/null ;;
+        pkg)     pkg list-all 2>/dev/null | cut -d/ -f1 ;;
+        nala|apt) apt-cache pkgnames 2>/dev/null ;;
+        dpkg)    dpkg-query -W -f='${Package}\n' 2>/dev/null ;;
         dnf)     dnf repoquery --qf '%{name}' 2>/dev/null ;;
         yum)     yum list available 2>/dev/null | awk 'NR>1{print $1}' | cut -d. -f1 ;;
         pacman)  pacman -Slq 2>/dev/null ;;
@@ -66,7 +74,7 @@ list_available() {
 
 list_installed() {
     case "$DETECTED_PM" in
-        apt)     dpkg-query -W -f='${Package}\n' 2>/dev/null ;;
+        pkg|nala|apt|dpkg) dpkg-query -W -f='${Package}\n' 2>/dev/null ;;
         dnf|yum) rpm -qa --qf '%{NAME}\n' 2>/dev/null ;;
         pacman)  pacman -Qq 2>/dev/null ;;
         zypper)  rpm -qa --qf '%{NAME}\n' 2>/dev/null ;;
@@ -77,7 +85,7 @@ list_installed() {
 get_version() {
     local pkg="$1"
     case "$DETECTED_PM" in
-        apt)     dpkg-query -W -f='${Version}' "$pkg" 2>/dev/null ;;
+        pkg|nala|apt|dpkg) dpkg-query -W -f='${Version}' "$pkg" 2>/dev/null ;;
         dnf|yum|zypper) rpm -q --qf '%{VERSION}' "$pkg" 2>/dev/null ;;
         pacman)  pacman -Q "$pkg" 2>/dev/null | awk '{print $2}' ;;
         apk)     apk version "$pkg" 2>/dev/null | awk 'NR==2{print $1}' | cut -d- -f2 ;;
@@ -87,7 +95,9 @@ get_version() {
 show_info() {
     local pkg="$1"
     case "$DETECTED_PM" in
-        apt)     apt show "$pkg" 2>/dev/null ;;
+        pkg)     pkg show "$pkg" 2>/dev/null ;;
+        nala)    nala show "$pkg" 2>/dev/null ;;
+        apt|dpkg) apt show "$pkg" 2>/dev/null ;;
         dnf)     dnf info "$pkg" 2>/dev/null ;;
         yum)     yum info "$pkg" 2>/dev/null ;;
         pacman)  pacman -Si "$pkg" 2>/dev/null || pacman -Qi "$pkg" 2>/dev/null ;;
@@ -280,15 +290,19 @@ run_tui() {
     while true; do
         tput civis 2>/dev/null || true
         
+        # Generate package list first, then pass to fzf
+        local pkg_list
+        pkg_list=$(gen_list)
+        
         local result
-        result=$(gen_list | fzf --ansi --no-multi \
+        result=$(fzf --ansi --no-multi \
             --prompt="${GREEN}Package: ${RESET}" \
             --header="Enter:select/exec │ ←→:cycle │ ^Enter:exec │ ?:info" \
             --preview="$0 --info {2}" \
             --preview-window=top:40% \
             --bind="?:toggle-preview,ctrl-enter:accept" \
             --expect="enter,right,left,ctrl-enter" \
-            --info=inline 2>/dev/null) || true
+            --info=inline <<< "$pkg_list" < /dev/tty) || true
         
         tput cnorm 2>/dev/null || true
         
