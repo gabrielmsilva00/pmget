@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pget - Package Getter (https://github.com/gabrielmsilva00/pget)
 
-VERSION="1.0.7"
+VERSION="1.0.8"
 
 # Colors
 BOLD=$(tput bold 2>/dev/null) || BOLD=""
@@ -63,13 +63,14 @@ run_pm() {
 
 fetch_packages() {
     case "$DETECTED_PM" in
-        pkg)      pkg list-all 2>/dev/null | grep -v '^Listing' | cut -d/ -f1 ;;
-        nala|apt) apt-cache pkgnames 2>/dev/null ;;
-        dnf)      dnf repoquery --qf '%{name}' 2>/dev/null ;;
-        yum)      yum list available 2>/dev/null | awk 'NR>1{print $1}' | cut -d. -f1 ;;
-        pacman)   pacman -Slq 2>/dev/null ;;
-        zypper)   zypper packages 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3);print $3}' ;;
-        apk)      apk search -q 2>/dev/null ;;
+        pkg|nala|apt) 
+            # Use apt-cache search to get descriptions, format: pkg [TAB] pkg - description
+            apt-cache search . 2>/dev/null | awk -F' - ' '{print $1 "\t" $0}' | sort -u ;;
+        dnf)      dnf repoquery --qf '%{name}\t%{name} - %{summary}' 2>/dev/null ;;
+        yum)      yum list available 2>/dev/null | awk 'NR>1 {print $1 "\t" $0}' | cut -d. -f1 ;;
+        pacman)   pacman -Slq 2>/dev/null | awk '{print $1 "\t" $1}' ;;
+        zypper)   zypper packages 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3);print $3 "\t" $3}' ;;
+        apk)      apk search -v 2>/dev/null | awk '{print $1 "\t" $0}' | sed 's/ - / /' ;; 
     esac
 }
 
@@ -263,7 +264,10 @@ _internal_gen_list() {
         printf "%s  SYMBOLS: %s[ ] None  [✓] Inst  [^] Upgr  [+] Add  [-] Rem\n", CYAN, RESET
     }
     {
-        pkg = $0; s = state[pkg]; is_inst = installed[pkg]; is_upgr = upgradeable[pkg]
+        split($0, arr, "\t")
+        pkg = arr[1]; display = (arr[2] == "" ? pkg : arr[2])
+        s = state[pkg]; is_inst = installed[pkg]; is_upgr = upgradeable[pkg]
+        
         sym = "[ ]"; col = ""; rst = RESET
         
         if (s == "1") { sym = "[+]"; col = BOLD GREEN }
@@ -271,7 +275,7 @@ _internal_gen_list() {
         else if (is_upgr) { sym = "[^]"; col = BOLD YELLOW }
         else if (is_inst) { sym = "[✓]"; col = BOLD BLUE }
         
-        printf "%s\t%s%s %-s%s\n", pkg, col, sym, pkg, rst
+        printf "%s\t%s%s %-s%s\n", pkg, col, sym, display, rst
     }
     ' "$pkg_file"
 }
