@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # pget - Package Getter (https://github.com/gabrielmsilva00/pget)
-set -euo pipefail
 
-VERSION="1.0.0"
+VERSION="1.0.1"
 
+# Colors
 BOLD=$(tput bold 2>/dev/null) || BOLD=""
 RESET=$(tput sgr0 2>/dev/null) || RESET=""
 RED=$(tput setaf 1 2>/dev/null) || RED=""
@@ -17,19 +17,28 @@ declare -a INSTALL_PKGS=()
 declare -a REMOVE_PKGS=()
 DETECTED_PM=""
 
+# Cleanup on exit
 cleanup() { tput cnorm 2>/dev/null || true; }
 trap cleanup EXIT INT
 
 detect_pm() {
+    # Priority: pkg (Termux) > nala > apt > others
     for pm in pkg nala apt dnf yum pacman zypper apk; do
-        command -v "$pm" &>/dev/null && { DETECTED_PM="$pm"; return 0; }
+        if command -v "$pm" &>/dev/null; then
+            DETECTED_PM="$pm"
+            return 0
+        fi
     done
-    echo "${RED}No package manager found${RESET}" >&2; exit 1
+    echo "${RED}Error: No supported package manager found.${RESET}" >&2
+    exit 1
 }
 
+# Execute package manager commands
 run_pm() {
-    local action="$1"; shift; local cmd=()
+    local action="$1"; shift
+    local cmd=()
     [[ "$USE_SUDO" == true ]] && cmd+=(sudo)
+    
     case "$DETECTED_PM:$action" in
         pkg:install)    cmd+=(pkg install -y "$@") ;;
         pkg:remove)     cmd+=(pkg uninstall -y "$@") ;;
@@ -48,9 +57,11 @@ run_pm() {
         apk:install)    cmd+=(apk add "$@") ;;
         apk:remove)     cmd+=(apk del "$@") ;;
     esac
+    
     "${cmd[@]}"
 }
 
+# Fetch list of available packages
 get_packages() {
     case "$DETECTED_PM" in
         pkg)      pkg list-all 2>/dev/null | cut -d/ -f1 ;;
@@ -60,16 +71,6 @@ get_packages() {
         pacman)   pacman -Slq 2>/dev/null ;;
         zypper)   zypper packages 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3);print $3}' ;;
         apk)      apk search -q 2>/dev/null ;;
-    esac
-}
-
-get_installed() {
-    case "$DETECTED_PM" in
-        pkg|nala|apt) dpkg-query -W -f='${Package}\n' 2>/dev/null ;;
-        dnf|yum)      rpm -qa --qf '%{NAME}\n' 2>/dev/null ;;
-        pacman)       pacman -Qq 2>/dev/null ;;
-        zypper)       rpm -qa --qf '%{NAME}\n' 2>/dev/null ;;
-        apk)          apk list -I 2>/dev/null | cut -d' ' -f1 | sed 's/-[0-9].*//' ;;
     esac
 }
 
@@ -91,96 +92,145 @@ parse_args() {
     local mode=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            -c) CLI_MODE=true ;;
-            -s) USE_SUDO=true ;;
-            -i) mode="i" ;;
-            -r) mode="r" ;;
-            -v) echo "pget v${VERSION}"; exit 0 ;;
-            -h) echo "pget v${VERSION} | -c cli -s sudo -i install -r remove"; exit 0 ;;
-            --info) detect_pm; show_info "$2"; exit 0 ;;
-            *) [[ "$mode" == "i" ]] && INSTALL_PKGS+=("$1"); [[ "$mode" == "r" ]] && REMOVE_PKGS+=("$1") ;;
+            -c|--cli)     CLI_MODE=true ;;
+            -s|--sudo)    USE_SUDO=true ;;
+            -i|--install) mode="i" ;;
+            -r|--remove)  mode="r" ;;
+            -v|--version) echo "pget v${VERSION}"; exit 0 ;;
+            -h|--help)    echo "pget v${VERSION}"; exit 0 ;;
+            --info)       detect_pm; show_info "$2"; exit 0 ;;
+            -*)           echo "${RED}Unknown option: $1${RESET}" >&2; exit 1 ;;
+            *)
+                if [[ "$mode" == "i" ]]; then
+                    INSTALL_PKGS+=("$1")
+                elif [[ "$mode" == "r" ]]; then
+                    REMOVE_PKGS+=("$1")
+                fi
+                ;;
         esac
         shift
     done
 }
 
 run_cli() {
-    echo "${BOLD}${CYAN}pget${RESET} ($DETECTED_PM)$([[ "$USE_SUDO" == true ]] && echo " [sudo]")"
-    [[ ${#REMOVE_PKGS[@]} -gt 0 ]] && { echo "${RED}Remove:${RESET} ${REMOVE_PKGS[*]}"; run_pm remove "${REMOVE_PKGS[@]}"; echo; }
-    [[ ${#INSTALL_PKGS[@]} -gt 0 ]] && { echo "${GREEN}Install:${RESET} ${INSTALL_PKGS[*]}"; run_pm install "${INSTALL_PKGS[@]}"; }
-    [[ ${#INSTALL_PKGS[@]} -eq 0 && ${#REMOVE_PKGS[@]} -eq 0 ]] && echo "${YELLOW}No packages${RESET}"
+    echo "${BOLD}${CYAN}pget${RESET} (${DETECTED_PM})$([[ "$USE_SUDO" == true ]] && echo " [sudo]")"
+    echo
+    
+    local rc=0
+    if [[ ${#REMOVE_PKGS[@]} -gt 0 ]]; then
+        echo "${RED}Removing:${RESET} ${REMOVE_PKGS[*]}"
+        run_pm remove "${REMOVE_PKGS[@]}" && echo "${GREEN}✓${RESET}" || { echo "${RED}✗${RESET}"; rc=1; }
+        echo
+    fi
+    
+    if [[ ${#INSTALL_PKGS[@]} -gt 0 ]]; then
+        echo "${GREEN}Installing:${RESET} ${INSTALL_PKGS[*]}"
+        run_pm install "${INSTALL_PKGS[@]}" && echo "${GREEN}✓${RESET}" || { echo "${RED}✗${RESET}"; rc=1; }
+    fi
+    
+    [[ ${#INSTALL_PKGS[@]} -eq 0 && ${#REMOVE_PKGS[@]} -eq 0 ]] && echo "${YELLOW}No packages selected${RESET}"
+    exit $rc
 }
 
-# Simple TUI: select packages then choose action
 run_tui() {
+    echo "${CYAN}Loading packages...${RESET}"
+    
+    # Pre-fetch packages to ensure we have data
+    local pkg_list
+    pkg_list=$(get_packages)
+    
+    if [[ -z "$pkg_list" ]]; then
+        echo "${RED}Error: Failed to retrieve package list from $DETECTED_PM.${RESET}" >&2
+        echo "Try running 'apt update' or 'pkg update' first." >&2
+        exit 1
+    fi
+    
     tput civis 2>/dev/null || true
     
-    # Get packages and pipe to fzf
+    # Run fzf using the pre-fetched list
     local selected
-    selected=$(get_packages | fzf -m \
-        --prompt="${BOLD}${GREEN}Select packages: ${RESET}" \
-        --header="Tab=multi-select  Enter=confirm  ?=info  Esc=quit" \
+    # Use printf to avoid command line length limits/echo issues with huge lists
+    selected=$(printf "%s\n" "$pkg_list" | fzf -m \
+        --prompt="${BOLD}${GREEN}Select: ${RESET}" \
+        --header="Tab: Select | Enter: Confirm | Esc: Quit" \
         --preview="$0 --info {}" \
         --preview-window="top:40%" \
         --bind="?:toggle-preview" \
         --info=inline \
+        --layout=reverse \
         --ansi 2>/dev/tty) || true
     
     tput cnorm 2>/dev/null || true
     
-    # No selection
-    [[ -z "$selected" ]] && { echo "${CYAN}Exit${RESET}"; exit 0; }
+    # Exit if nothing selected (Esc or empty enter)
+    [[ -z "$selected" ]] && { echo "${CYAN}Cancelled${RESET}"; exit 0; }
     
-    # Convert to space-separated
-    local packages=$(echo "$selected" | tr '\n' ' ')
-    echo "Selected: $packages"
+    # Format selection for display (newlines to spaces)
+    local pkg_str
+    pkg_str=$(echo "$selected" | tr '\n' ' ')
     
-    # Ask what to do
+    echo "Selected: $pkg_str"
+    echo
+    
+    # Action loop
     while true; do
         local stxt=""; [[ "$USE_SUDO" == true ]] && stxt=" ${CYAN}[sudo]${RESET}"
-        read -n1 -rp "[i]nstall [r]emove [s]udo($USE_SUDO) [m]ore [q]uit:$stxt " action </dev/tty
+        
+        # Explicit read from /dev/tty to avoid stdin issues
+        echo -ne "Action [i]nstall [r]emove [s]udo${stxt} [q]uit: "
+        read -n1 action < /dev/tty
         echo
         
         case "$action" in
             i|I)
+                echo
+                # Build execute command
                 local cmd="pget -c"
                 [[ "$USE_SUDO" == true ]] && cmd+=" -s"
-                cmd+=" -i $packages"
+                cmd+=" -i $pkg_str"
+                
                 echo "${CYAN}> $cmd${RESET}"
                 eval "$cmd"
                 break
                 ;;
             r|R)
+                echo
                 local cmd="pget -c"
                 [[ "$USE_SUDO" == true ]] && cmd+=" -s"
-                cmd+=" -r $packages"
+                cmd+=" -r $pkg_str"
+                
                 echo "${CYAN}> $cmd${RESET}"
                 eval "$cmd"
                 break
                 ;;
             s|S)
-                USE_SUDO=$([[ "$USE_SUDO" == true ]] && echo false || echo true)
+                if [[ "$USE_SUDO" == true ]]; then
+                    USE_SUDO=false
+                else
+                    USE_SUDO=true
+                fi
+                echo "Sudo mode: $USE_SUDO"
                 ;;
-            m|M)
-                # Select more packages
-                run_tui
-                break
-                ;;
-            q|Q|"")
-                echo "${CYAN}Exit${RESET}"
+            q|Q)
+                echo "${CYAN}Exiting${RESET}"
                 break
                 ;;
             *)
-                echo "${RED}i/r/s/m/q${RESET}"
+                echo "${RED}Invalid option${RESET}" 
                 ;;
         esac
+        echo
     done
 }
 
 main() {
     parse_args "$@"
     detect_pm
-    [[ "$CLI_MODE" == true ]] && run_cli || run_tui
+    if [[ "$CLI_MODE" == true ]]; then
+        run_cli
+    else
+        run_tui
+    fi
 }
 
 main "$@"

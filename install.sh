@@ -88,7 +88,8 @@ fi
 
 # Download pget
 TMPFILE=$(mktemp)
-if ! curl -fsSL "$URL/pget" -o "$TMPFILE"; then
+# Force fresh download with cache-control header
+if ! curl -fsSL -H "Cache-Control: no-cache" "$URL/pget" -o "$TMPFILE"; then
     echo "${E}Download failed${R}"
     rm -f "$TMPFILE"
     exit 1
