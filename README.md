@@ -5,7 +5,7 @@
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/GabrielNSD/Search/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pget/main/install.sh | bash
 ```
 
 **Requires:** `fzf` and one of: apt, dnf, yum, pacman, zypper, apk

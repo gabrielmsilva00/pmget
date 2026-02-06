@@ -24,6 +24,23 @@ mkdir -p "$DIR"
 curl -fsSL "$URL/pget" -o "$DIR/pget" && chmod +x "$DIR/pget" || { echo "${E}Download failed${R}"; exit 1; }
 echo "${G}✓${R} Installed to $DIR/pget"
 
-[[ ":$PATH:" != *":$DIR:"* ]] && echo -e "\n${C}Add to PATH:${R}\n  export PATH=\"\$PATH:$DIR\""
+if [[ ":$PATH:" != *":$DIR:"* ]]; then
+    SHELL_NAME=$(basename "$SHELL")
+    case "$SHELL_NAME" in
+        zsh)  RC="$HOME/.zshrc" ;;
+        bash) RC="${HOME}/.bashrc"; [[ ! -f "$RC" ]] && RC="$HOME/.profile" ;;
+        *)    RC="$HOME/.profile" ;;
+    esac
+    
+    LINE="export PATH=\"\$PATH:$DIR\""
+    if [[ -f "$RC" ]] && grep -qF "$DIR" "$RC" 2>/dev/null; then
+        echo "${G}✓${R} PATH already configured in $RC"
+    else
+        echo "$LINE" >> "$RC"
+        echo "${G}✓${R} Added to PATH in $RC"
+        echo "${C}Note:${R} Restart your shell or run: source ~/${RC##*/}"
+        export PATH="$PATH:$DIR"
+    fi
+fi
 
 echo -e "\n${G}Done!${R} Run: pget"
