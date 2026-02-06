@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # pget - Package Getter (https://github.com/gabrielmsilva00/pget)
 
-VERSION="1.0.3"
+VERSION="1.0.4"
 
+# Colors
 BOLD=$(tput bold 2>/dev/null) || BOLD=""
 RESET=$(tput sgr0 2>/dev/null) || RESET=""
 RED=$(tput setaf 1 2>/dev/null) || RED=""
@@ -27,9 +28,13 @@ trap cleanup EXIT INT
 
 detect_pm() {
     for pm in pkg nala apt dnf yum pacman zypper apk; do
-        command -v "$pm" &>/dev/null && { DETECTED_PM="$pm"; return 0; }
+        if command -v "$pm" &>/dev/null; then
+            DETECTED_PM="$pm"
+            return 0
+        fi
     done
-    echo "${RED}No package manager found${RESET}" >&2; exit 1
+    echo "${RED}Error: No supported package manager found.${RESET}" >&2
+    exit 1
 }
 
 run_pm() {
@@ -69,16 +74,16 @@ fetch_packages() {
 }
 
 show_info() {
-    echo -e "${BOLD}${CYAN}Info:${RESET}\n"
+    echo -e "${BOLD}${CYAN}Package Info:${RESET}\n"
     case "$DETECTED_PM" in
-        pkg)    pkg show "$1" 2>/dev/null ;;
-        nala)   nala show "$1" 2>/dev/null ;;
-        apt)    apt show "$1" 2>/dev/null ;;
-        dnf)    dnf info "$1" 2>/dev/null ;;
-        yum)    yum info "$1" 2>/dev/null ;;
-        pacman) pacman -Si "$1" 2>/dev/null || pacman -Qi "$1" 2>/dev/null ;;
-        zypper) zypper info "$1" 2>/dev/null ;;
-        apk)    apk info -a "$1" 2>/dev/null ;;
+        pkg)      pkg show "$1" 2>/dev/null ;;
+        nala)     nala show "$1" 2>/dev/null ;;
+        apt)      apt show "$1" 2>/dev/null ;;
+        dnf)      dnf info "$1" 2>/dev/null ;;
+        yum)      yum info "$1" 2>/dev/null ;;
+        pacman)   pacman -Si "$1" 2>/dev/null || pacman -Qi "$1" 2>/dev/null ;;
+        zypper)   zypper info "$1" 2>/dev/null ;;
+        apk)      apk info -a "$1" 2>/dev/null ;;
     esac
 }
 
@@ -86,13 +91,13 @@ parse_args() {
     local mode=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            -c) CLI_MODE=true ;;
-            -s) USE_SUDO=true ;;
-            -i) mode="i" ;;
-            -r) mode="r" ;;
-            -v) echo "pget v${VERSION}"; exit 0 ;;
-            -h) echo "pget v${VERSION} | -c -s -i -r"; exit 0 ;;
-            --info) detect_pm; show_info "$2"; exit 0 ;;
+            -c|--cli)     CLI_MODE=true ;;
+            -s|--sudo)    USE_SUDO=true ;;
+            -i|--install) mode="i" ;;
+            -r|--remove)  mode="r" ;;
+            -v|--version) echo "pget v${VERSION}"; exit 0 ;;
+            -h|--help)    echo "pget v${VERSION}"; exit 0 ;;
+            --info)       detect_pm; show_info "$2"; exit 0 ;;
             *) [[ "$mode" == "i" ]] && INSTALL_PKGS+=("$1"); [[ "$mode" == "r" ]] && REMOVE_PKGS+=("$1") ;;
         esac
         shift
@@ -100,104 +105,134 @@ parse_args() {
 }
 
 run_cli() {
-    echo "${BOLD}${CYAN}pget${RESET} ($DETECTED_PM)$([[ "$USE_SUDO" == true ]] && echo " [sudo]")"
-    [[ ${#REMOVE_PKGS[@]} -gt 0 ]] && { echo "${RED}Remove:${RESET} ${REMOVE_PKGS[*]}"; run_pm remove "${REMOVE_PKGS[@]}" || true; }
-    [[ ${#INSTALL_PKGS[@]} -gt 0 ]] && { echo "${GREEN}Install:${RESET} ${INSTALL_PKGS[*]}"; run_pm install "${INSTALL_PKGS[@]}" || true; }
+    echo "${BOLD}${CYAN}pget${RESET} (${DETECTED_PM})$([[ "$USE_SUDO" == true ]] && echo " [sudo]")"
+    local rc=0
+    [[ ${#REMOVE_PKGS[@]} -gt 0 ]] && { echo "${RED}Removing:${RESET} ${REMOVE_PKGS[*]}"; run_pm remove "${REMOVE_PKGS[@]}" || rc=1; echo; }
+    [[ ${#INSTALL_PKGS[@]} -gt 0 ]] && { echo "${GREEN}Installing:${RESET} ${INSTALL_PKGS[*]}"; run_pm install "${INSTALL_PKGS[@]}" || rc=1; }
+    [[ ${#INSTALL_PKGS[@]} -eq 0 && ${#REMOVE_PKGS[@]} -eq 0 ]] && echo "${YELLOW}No packages selected${RESET}"
+    exit $rc
 }
 
 get_state() { grep "^$1=" "$STATE_FILE" 2>/dev/null | cut -d= -f2 || echo 0; }
-set_state() { grep -v "^$1=" "$STATE_FILE" > "$STATE_FILE.tmp" 2>/dev/null || true; mv "$STATE_FILE.tmp" "$STATE_FILE"; echo "$1=$2" >> "$STATE_FILE"; }
+set_state() { 
+    grep -v "^$1=" "$STATE_FILE" > "$STATE_FILE.tmp" 2>/dev/null || true
+    mv "$STATE_FILE.tmp" "$STATE_FILE"
+    echo "$1=$2" >> "$STATE_FILE"
+}
 
+# Optimized list generation using awk
 gen_list() {
-    while IFS= read -r pkg; do
-        [[ -z "$pkg" ]] && continue
-        local s=$(get_state "$pkg")
-        case "$s" in
-            1) printf "${GREEN}[+]${RESET} %s\n" "$pkg" ;;
-            2) printf "${RED}[-]${RESET} %s\n" "$pkg" ;;
-            *) printf "[ ] %s\n" "$pkg" ;;
-        esac
-    done < "$PKG_FILE"
+    awk -v state_file="$STATE_FILE" '
+    BEGIN {
+        while ((getline line < state_file) > 0) {
+            split(line, parts, "=")
+            state[parts[1]] = parts[2]
+        }
+        close(state_file)
+        GREEN="\033[32m"; RED="\033[31m"; RESET="\033[0m"
+    }
+    {
+        s = state[$0]
+        if (s == "1") print GREEN "[+] " RESET $0
+        else if (s == "2") print RED "[-] " RESET $0
+        else print "[ ] " $0
+    }
+    ' "$PKG_FILE"
 }
 
 run_tui() {
+    echo -n "${CYAN}Loading packages...${RESET} "
+    
     PKG_FILE=$(mktemp)
     STATE_FILE=$(mktemp)
     
-    echo -n "${CYAN}Loading...${RESET} "
     fetch_packages > "$PKG_FILE"
     
     if [[ ! -s "$PKG_FILE" ]]; then
-        echo "${RED}Failed${RESET}"
-        echo "Try: ${DETECTED_PM} update"
+        echo "${RED}Failed to load packages.${RESET}"
+        echo "Try checking your internet connection or running: ${DETECTED_PM} update"
         exit 1
     fi
-    echo "${GREEN}OK${RESET} ($(wc -l < "$PKG_FILE") packages)"
+    echo "${GREEN}OK${RESET} ($(wc -l < "$PKG_FILE" | tr -d ' ') items)"
     
     local query=""
+    
     while true; do
         tput civis 2>/dev/null || true
         
-        local sudo_ind="off"; [[ "$USE_SUDO" == true ]] && sudo_ind="${GREEN}ON${RESET}"
+        local header="Enter=Sel/Exec | ←→=Cycle | s=Sudo ($([[ "$USE_SUDO" == true ]] && echo "${GREEN}ON${RESET}" || echo "${RED}OFF${RESET}"))"
         
+        # Generates list and pipes to fzf WITHOUT input redirection (fixes system files bug)
         local result
         result=$(gen_list | fzf --ansi --no-multi \
             --query="$query" \
             --prompt="pget: " \
-            --header="Enter=sel/exec ←→=cycle s=sudo($sudo_ind) Esc=quit" \
-            --preview="$0 --info {2}" \
+            --header="$header" \
+            --preview="pkg=\$(echo {} | sed 's/\x1b\[[0-9;]*m//g' | awk '{print \$2}'); $0 --info \$pkg" \
             --preview-window="top:40%" \
             --expect="enter,right,left,s" \
             --print-query \
             --layout=reverse \
-            --info=inline </dev/tty 2>/dev/tty) || true
-        
+            --info=inline \
+            2>/dev/tty) || true
+
         tput cnorm 2>/dev/null || true
         
-        local q=$(sed -n '1p' <<< "$result")
-        local key=$(sed -n '2p' <<< "$result")
-        local line=$(sed -n '3p' <<< "$result")
-        local pkg=$(awk '{print $2}' <<< "$line")
+        local lines_arr
+        mapfile -t lines_arr <<< "$result"
+        local q="${lines_arr[0]}"
+        local key="${lines_arr[1]}"
+        local selection="${lines_arr[2]}"
+        
+        # Clean formatted package name
+        local pkg=$(echo "$selection" | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $2}')
         query="$q"
         
-        # Exit on Esc
-        [[ -z "$key" && -z "$line" ]] && { echo "${CYAN}Exit${RESET}"; break; }
+        # Exit if Esc/Ctrl-C
+        [[ -z "$key" && -z "$selection" ]] && { echo "${CYAN}Exit${RESET}"; break; }
         
         case "$key" in
             s)
-                USE_SUDO=$([[ "$USE_SUDO" == true ]] && echo false || echo true)
-                ;;
+                 USE_SUDO=$([[ "$USE_SUDO" == true ]] && echo false || echo true)
+                 ;;
             right)
-                [[ -n "$pkg" ]] && set_state "$pkg" $(( ($(get_state "$pkg") + 1) % 3 ))
+                [[ -n "$pkg" ]] && {
+                    local s=$(get_state "$pkg")
+                    set_state "$pkg" $(( (s + 1) % 3 ))
+                }
                 ;;
             left)
-                [[ -n "$pkg" ]] && set_state "$pkg" $(( ($(get_state "$pkg") + 2) % 3 ))
+                [[ -n "$pkg" ]] && {
+                    local s=$(get_state "$pkg")
+                    set_state "$pkg" $(( (s + 2) % 3 ))
+                }
                 ;;
             enter)
-                [[ -z "$pkg" ]] && continue
-                local s=$(get_state "$pkg")
-                if [[ "$s" == "0" ]]; then
-                    set_state "$pkg" 1
-                else
-                    # Execute all
-                    local inst=$(grep '=1$' "$STATE_FILE" 2>/dev/null | cut -d= -f1 | tr '\n' ' ')
-                    local rem=$(grep '=2$' "$STATE_FILE" 2>/dev/null | cut -d= -f1 | tr '\n' ' ')
-                    
-                    [[ -z "$inst" && -z "$rem" ]] && continue
-                    
-                    echo
-                    [[ -n "$inst" ]] && echo "${GREEN}Install:${RESET} $inst"
-                    [[ -n "$rem" ]] && echo "${RED}Remove:${RESET} $rem"
-                    echo
-                    
-                    local cmd="pget -c"
-                    [[ "$USE_SUDO" == true ]] && cmd+=" -s"
-                    [[ -n "$inst" ]] && cmd+=" -i $inst"
-                    [[ -n "$rem" ]] && cmd+=" -r $rem"
-                    
-                    echo "${CYAN}> $cmd${RESET}"
-                    eval "$cmd"
-                    break
+                if [[ -n "$pkg" ]]; then
+                    local s=$(get_state "$pkg")
+                    if [[ "$s" == "0" ]]; then
+                         # Not selected -> Mark for Install
+                         set_state "$pkg" 1
+                    else
+                         # Already marked -> Execute Pending
+                         local inst=$(grep '=1$' "$STATE_FILE" 2>/dev/null | cut -d= -f1 | tr '\n' ' ')
+                         local rem=$(grep '=2$' "$STATE_FILE" 2>/dev/null | cut -d= -f1 | tr '\n' ' ')
+                         
+                         if [[ -z "$inst" && -z "$rem" ]]; then
+                             # Nothing actually pending (maybe toggled off?)
+                             continue
+                         fi
+
+                         echo
+                         local cmd="pget -c"
+                         [[ "$USE_SUDO" == true ]] && cmd+=" -s"
+                         [[ -n "$inst" ]] && cmd+=" -i $inst"
+                         [[ -n "$rem" ]] && cmd+=" -r $rem"
+                         
+                         echo "${CYAN}> Executing...${RESET}"
+                         eval "$cmd"
+                         exit 0
+                    fi
                 fi
                 ;;
         esac
