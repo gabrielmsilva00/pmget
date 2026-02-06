@@ -50,11 +50,14 @@ EXISTING_PGET=$(command -v pget 2>/dev/null)
 if [[ -n "$EXISTING_PGET" ]]; then
     # Check if it's our pget by looking for signature
     if grep -q "Package Getter" "$EXISTING_PGET" 2>/dev/null; then
+        CURRENT_VER=$("$EXISTING_PGET" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+        NEW_VER=$(curl -fsSL "$URL/pget" 2>/dev/null | grep -oE '^VERSION="[0-9]+\.[0-9]+\.[0-9]+"' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+        
         if [[ "$EXISTING_PGET" == "$DIR/pget" ]]; then
-            echo "${C}→${R} Updating existing pget"
+            echo "${C}→${R} Updating pget: v${CURRENT_VER} → v${NEW_VER}"
         else
-            echo "${Y}!${R} pget already installed at: $EXISTING_PGET"
-            echo "  Will install to: $DIR/pget"
+            echo "${Y}!${R} pget v${CURRENT_VER} installed at: $EXISTING_PGET"
+            echo "  Will install v${NEW_VER} to: $DIR/pget"
         fi
     else
         echo "${Y}⚠${R} Different 'pget' binary found: $EXISTING_PGET"
