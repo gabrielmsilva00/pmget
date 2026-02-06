@@ -12,14 +12,16 @@ CYAN=$(tput setaf 6 2>/dev/null) || CYAN=""
 
 CLI_MODE=false
 USE_SUDO=false
-MODE="install"  # install or remove
-declare -a PACKAGES=()
+declare -a INSTALL_PKGS=()
+declare -a REMOVE_PKGS=()
 DETECTED_PM=""
+STATE_FILE=""
 
 readonly PKG_REGEX='^[a-zA-Z0-9][a-zA-Z0-9.+_-]*$'
 
 cleanup() {
     tput cnorm 2>/dev/null || true
+    [[ -n "$STATE_FILE" && -f "$STATE_FILE" ]] && rm -f "$STATE_FILE"
 }
 trap cleanup EXIT INT
 
@@ -104,23 +106,26 @@ ${BOLD}pget${RESET} v${VERSION} - Package Getter
 
 ${BOLD}Usage:${RESET}
   pget [options]
-  pget -c [-s] -i <pkgs...>
-  pget -c [-s] -r <pkgs...>
+  pget -c [-s] -i <pkgs...> -r <pkgs...>
 
 ${BOLD}Options:${RESET}
   -c, --cli       CLI mode (direct execution)
   -s, --sudo      Run with sudo
-  -i, --install   Install mode (default)
-  -r, --remove    Remove mode
+  -i <pkgs>       Packages to install
+  -r <pkgs>       Packages to remove
   -v, --version   Show version
   -h, --help      Show help
 
 ${BOLD}TUI Controls:${RESET}
-  ↑/↓         Navigate
-  Tab         Select multiple
-  Enter       Confirm selection
-  ?           Toggle preview
+  ↑/↓         Navigate packages
+  Enter       Select for install / Execute if any selected
+  →           Cycle: none → install → remove
+  ←           Cycle: none → remove → install
+  ?           Toggle package info
   Esc         Exit
+
+${BOLD}States:${RESET}
+  ${GREEN}[+]${RESET} Install    ${RED}[-]${RESET} Remove    [ ] None
 
 ${BOLD}Supported:${RESET} pkg, nala, apt, dpkg, dnf, yum, pacman, zypper, apk
 EOF
@@ -128,19 +133,20 @@ EOF
 }
 
 parse_args() {
-    local collecting=""
+    local mode=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -c|--cli)     CLI_MODE=true ;;
             -s|--sudo)    USE_SUDO=true ;;
-            -i|--install) MODE="install"; collecting="pkg" ;;
-            -r|--remove)  MODE="remove"; collecting="pkg" ;;
+            -i|--install) mode="i" ;;
+            -r|--remove)  mode="r" ;;
             -v|--version) echo "pget v${VERSION}"; exit 0 ;;
             -h|--help)    show_help ;;
             -*)           echo "${RED}Unknown: $1${RESET}" >&2; exit 1 ;;
             *)
                 [[ "$1" =~ $PKG_REGEX ]] || { echo "${RED}Invalid package: $1${RESET}" >&2; exit 1; }
-                [[ "$collecting" == "pkg" ]] && PACKAGES+=("$1")
+                [[ "$mode" == "i" ]] && INSTALL_PKGS+=("$1")
+                [[ "$mode" == "r" ]] && REMOVE_PKGS+=("$1")
                 ;;
         esac
         shift
@@ -148,142 +154,153 @@ parse_args() {
 }
 
 run_cli() {
-    if [[ ${#PACKAGES[@]} -eq 0 ]]; then
-        echo "${YELLOW}No packages specified${RESET}"
-        exit 1
-    fi
-    
+    local rc=0
     echo "${BOLD}${CYAN}pget${RESET} (${DETECTED_PM})$( [[ "$USE_SUDO" == true ]] && echo " ${CYAN}[sudo]${RESET}" )"
     echo
     
-    if [[ "$MODE" == "install" ]]; then
-        echo "${GREEN}Installing:${RESET} ${PACKAGES[*]}"
-        run_pm install "${PACKAGES[@]}" && echo "${GREEN}✓ Done${RESET}" || echo "${RED}✗ Failed${RESET}"
-    else
-        echo "${RED}Removing:${RESET} ${PACKAGES[*]}"
-        run_pm remove "${PACKAGES[@]}" && echo "${GREEN}✓ Done${RESET}" || echo "${RED}✗ Failed${RESET}"
+    # Run removals first
+    if [[ ${#REMOVE_PKGS[@]} -gt 0 ]]; then
+        echo "${RED}Removing:${RESET} ${REMOVE_PKGS[*]}"
+        run_pm remove "${REMOVE_PKGS[@]}" && echo "${GREEN}✓ Done${RESET}" || { echo "${RED}✗ Failed${RESET}"; rc=1; }
+        echo
     fi
+    
+    # Then installations
+    if [[ ${#INSTALL_PKGS[@]} -gt 0 ]]; then
+        echo "${GREEN}Installing:${RESET} ${INSTALL_PKGS[*]}"
+        run_pm install "${INSTALL_PKGS[@]}" && echo "${GREEN}✓ Done${RESET}" || { echo "${RED}✗ Failed${RESET}"; rc=1; }
+    fi
+    
+    [[ ${#INSTALL_PKGS[@]} -eq 0 && ${#REMOVE_PKGS[@]} -eq 0 ]] && {
+        echo "${YELLOW}No packages specified${RESET}"
+        rc=1
+    }
+    
+    exit $rc
 }
 
-run_tui_install() {
-    tput civis 2>/dev/null || true
-    
-    local packages
-    packages=$(list_available | fzf -m \
-        --prompt="${BOLD}${GREEN}Install Package(s): ${RESET}" \
-        --header="↑↓: Navigate | Tab: Select | Enter: Confirm | ?: Preview" \
-        --preview="$0 --info {}" \
-        --preview-window="top:40%" \
-        --bind="?:toggle-preview" \
-        --info=inline \
-        --ansi 2>/dev/tty | tr "\n" " ")
-    
-    tput cnorm 2>/dev/null || true
-    
-    if [[ -z "$packages" ]]; then
-        echo "${CYAN}No package selected${RESET}"
-        return
-    fi
-    
-    echo "Selected: $packages"
-    echo
-    
-    while true; do
-        local sudo_hint=""
-        [[ "$USE_SUDO" == true ]] && sudo_hint=" ${CYAN}[sudo]${RESET}"
-        read -n1 -rp "Install?${sudo_hint} [Y/n/s/q]: " choice
-        echo
-        
-        case "$choice" in
-            ""|y|Y)
-                echo
-                if run_pm install $packages; then
-                    echo "${GREEN}✓ Installation complete${RESET}"
-                else
-                    echo "${RED}✗ Installation failed${RESET}"
-                fi
-                break
-                ;;
-            n|N) run_tui_install; break ;;
-            s|S)
-                USE_SUDO=$([[ "$USE_SUDO" == true ]] && echo false || echo true)
-                echo "sudo: $USE_SUDO"
-                ;;
-            q|Q) echo "${CYAN}Exiting${RESET}"; break ;;
-            *) echo "${RED}Y/n/s/q${RESET}" ;;
-        esac
-    done
+# State management: 0=none, 1=install, 2=remove
+get_state() {
+    grep -E "^$1:" "$STATE_FILE" 2>/dev/null | cut -d: -f2 || echo 0
 }
 
-run_tui_remove() {
-    tput civis 2>/dev/null || true
+set_state() {
+    local pkg="$1" state="$2"
+    grep -v "^${pkg}:" "$STATE_FILE" > "${STATE_FILE}.tmp" 2>/dev/null || true
+    mv "${STATE_FILE}.tmp" "$STATE_FILE"
+    [[ "$state" != "0" ]] && echo "${pkg}:${state}" >> "$STATE_FILE"
+}
+
+cycle_forward() {
+    local s=$(get_state "$1")
+    set_state "$1" $(( (s + 1) % 3 ))
+}
+
+cycle_backward() {
+    local s=$(get_state "$1")
+    set_state "$1" $(( (s + 2) % 3 ))
+}
+
+has_selections() {
+    [[ -s "$STATE_FILE" ]] && grep -qE ':[12]$' "$STATE_FILE" 2>/dev/null
+}
+
+gen_list() {
+    local installed_cache="$1"
+    while IFS= read -r pkg; do
+        [[ -z "$pkg" ]] && continue
+        local s=$(get_state "$pkg")
+        local marker="[ ]" color=""
+        case "$s" in
+            1) marker="[+]"; color="$GREEN" ;;
+            2) marker="[-]"; color="$RED" ;;
+        esac
+        local inst=""
+        if echo "$installed_cache" | grep -qxF "$pkg"; then
+            inst=" ${YELLOW}*${RESET}"
+        fi
+        echo -e "${color}${BOLD}${marker}${RESET} ${pkg}${inst}"
+    done < <(list_available)
+}
+
+execute_selections() {
+    local install_list=$(grep ':1$' "$STATE_FILE" 2>/dev/null | cut -d: -f1 | tr '\n' ' ')
+    local remove_list=$(grep ':2$' "$STATE_FILE" 2>/dev/null | cut -d: -f1 | tr '\n' ' ')
     
-    local packages
-    packages=$(list_installed | fzf -m \
-        --prompt="${BOLD}${RED}Remove Package(s): ${RESET}" \
-        --header="↑↓: Navigate | Tab: Select | Enter: Confirm | ?: Preview" \
-        --preview="$0 --info {}" \
-        --preview-window="top:40%" \
-        --bind="?:toggle-preview" \
-        --info=inline \
-        --ansi 2>/dev/tty | tr "\n" " ")
+    # Build command
+    local cmd="pget -c"
+    [[ "$USE_SUDO" == true ]] && cmd+=" -s"
+    [[ -n "$install_list" ]] && cmd+=" -i $install_list"
+    [[ -n "$remove_list" ]] && cmd+=" -r $remove_list"
     
-    tput cnorm 2>/dev/null || true
-    
-    if [[ -z "$packages" ]]; then
-        echo "${CYAN}No package selected${RESET}"
-        return
-    fi
-    
-    echo "Selected: $packages"
+    echo
+    echo "${BOLD}${CYAN}══════════════════════════════${RESET}"
+    [[ -n "$install_list" ]] && echo "${GREEN}[+] Install:${RESET} $install_list"
+    [[ -n "$remove_list" ]] && echo "${RED}[-] Remove:${RESET} $remove_list"
+    echo "${BOLD}${CYAN}══════════════════════════════${RESET}"
+    echo
+    echo "${CYAN}> ${cmd}${RESET}"
     echo
     
-    while true; do
-        local sudo_hint=""
-        [[ "$USE_SUDO" == true ]] && sudo_hint=" ${CYAN}[sudo]${RESET}"
-        read -n1 -rp "Remove?${sudo_hint} [Y/n/s/q]: " choice
-        echo
-        
-        case "$choice" in
-            ""|y|Y)
-                echo
-                if run_pm remove $packages; then
-                    echo "${GREEN}✓ Removal complete${RESET}"
-                else
-                    echo "${RED}✗ Removal failed${RESET}"
-                fi
-                break
-                ;;
-            n|N) run_tui_remove; break ;;
-            s|S)
-                USE_SUDO=$([[ "$USE_SUDO" == true ]] && echo false || echo true)
-                echo "sudo: $USE_SUDO"
-                ;;
-            q|Q) echo "${CYAN}Exiting${RESET}"; break ;;
-            *) echo "${RED}Y/n/s/q${RESET}" ;;
-        esac
-    done
+    # Execute
+    eval "$cmd"
 }
 
 run_tui() {
+    STATE_FILE=$(mktemp)
+    local installed_cache=$(list_installed)
+    
     echo "${BOLD}${CYAN}pget${RESET} (${DETECTED_PM})"
-    echo
     
     while true; do
-        local sudo_hint=""
-        [[ "$USE_SUDO" == true ]] && sudo_hint=" ${CYAN}[sudo]${RESET}"
-        read -n1 -rp "Mode${sudo_hint} [i]nstall/[r]emove/[s]udo/[q]uit: " mode_choice
-        echo
+        tput civis 2>/dev/null || true
         
-        case "$mode_choice" in
-            i|I) run_tui_install; break ;;
-            r|R) run_tui_remove; break ;;
-            s|S)
-                USE_SUDO=$([[ "$USE_SUDO" == true ]] && echo false || echo true)
-                echo "sudo: $USE_SUDO"
+        local pkg_list=$(gen_list "$installed_cache")
+        
+        local result
+        result=$(fzf --ansi --no-multi \
+            --prompt="${GREEN}Package: ${RESET}" \
+            --header="Enter: select/exec | ←→: cycle | ?: info | Esc: exit" \
+            --preview="$0 --info {2}" \
+            --preview-window="top:40%" \
+            --bind="?:toggle-preview" \
+            --expect="enter,right,left" \
+            --info=inline \
+            <<< "$pkg_list" < /dev/tty 2>/dev/null) || true
+        
+        tput cnorm 2>/dev/null || true
+        
+        local key=$(head -1 <<< "$result")
+        local sel=$(tail -1 <<< "$result")
+        local pkg=$(awk '{print $2}' <<< "$sel")
+        
+        # Esc or empty = exit
+        [[ -z "$key" && -z "$sel" ]] && { echo "${CYAN}Exit${RESET}"; break; }
+        [[ -z "$pkg" ]] && continue
+        
+        # Validate package name
+        [[ "$pkg" =~ $PKG_REGEX ]] || continue
+        
+        case "$key" in
+            enter)
+                local current_state=$(get_state "$pkg")
+                if [[ "$current_state" == "0" ]]; then
+                    # Not selected -> select for install
+                    set_state "$pkg" 1
+                else
+                    # Already has selections -> execute if any
+                    if has_selections; then
+                        execute_selections
+                        break
+                    fi
+                fi
                 ;;
-            q|Q|"") echo "${CYAN}Exiting${RESET}"; break ;;
-            *) echo "${RED}i/r/s/q${RESET}" ;;
+            right)
+                cycle_forward "$pkg"
+                ;;
+            left)
+                cycle_backward "$pkg"
+                ;;
         esac
     done
 }

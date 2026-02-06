@@ -51,6 +51,7 @@ pget -c -s -i git -r vim   # Both operations with sudo
 | `-s` | Use sudo |
 | `-i` | Packages to install |
 | `-r` | Packages to remove |
+| `-v` | Show version |
 | `-h` | Help |
 
 ## TUI Controls
@@ -58,10 +59,9 @@ pget -c -s -i git -r vim   # Both operations with sudo
 | Key | Action |
 |-----|--------|
 | `↑`/`↓` | Navigate |
-| `Enter` | Mark for install / Execute if marked |
+| `Enter` | Select for install / Execute if selected |
 | `→` | Cycle: none → install → remove |
 | `←` | Cycle: none → remove → install |
-| `Ctrl+Enter` | Execute |
 | `?` | Toggle info |
 | `Esc` | Exit |
 
