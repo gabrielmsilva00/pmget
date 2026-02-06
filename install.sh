@@ -9,7 +9,7 @@ E=$(tput setaf 1 2>/dev/null) || E=""
 C=$(tput setaf 6 2>/dev/null) || C=""
 Y=$(tput setaf 3 2>/dev/null) || Y=""
 
-URL="https://raw.githubusercontent.com/gabrielmsilva00/pget/main"
+URL="https://raw.githubusercontent.com/gabrielmsilva00/pmget/main"
 INSTALL_MODE=""
 NEED_SUDO=false
 MISSING_DEPS=()
@@ -41,20 +41,20 @@ case "${INSTALL_MODE:-local}" in
     root)  DIR="/root/.local/bin"; NEED_SUDO=true ;;
 esac
 
-echo "${B}${C}pget installer${R}"
+echo "${B}${C}pmget installer${R}"
 echo "${C}Target:${R} $DIR"
 echo
 
-# Check for existing pget
-EXISTING_PGET=$(command -v pget 2>/dev/null) || true
-if [[ -n "$EXISTING_PGET" ]]; then
-    # Check if it's our pget by looking for signature
-    if grep -q "github.com/gabrielmsilva00/pget" "$EXISTING_PGET" 2>/dev/null; then
-        CURRENT_VER=$("$EXISTING_PGET" -v 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "?")
-        echo "${C}→${R} Updating pget v${CURRENT_VER}"
+# Check for existing pmget
+EXISTING_PMGET=$(command -v pmget 2>/dev/null) || true
+if [[ -n "$EXISTING_PMGET" ]]; then
+    # Check if it's our pmget by looking for signature
+    if grep -q "github.com/gabrielmsilva00/pmget" "$EXISTING_PMGET" 2>/dev/null; then
+        CURRENT_VER=$("$EXISTING_PMGET" -v 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "?")
+        echo "${C}→${R} Updating pmget v${CURRENT_VER}"
     else
-        echo "${Y}⚠${R} Different 'pget' found: $EXISTING_PGET"
-        echo "  Will install to: $DIR/pget"
+        echo "${Y}⚠${R} Different 'pmget' found: $EXISTING_PMGET"
+        echo "  Will install to: $DIR/pmget"
     fi
     echo
 fi
@@ -86,17 +86,17 @@ else
     mkdir -p "$DIR"
 fi
 
-# Download pget
+# Download pmget
 TMPFILE=$(mktemp)
 # Force fresh download with cache-control header
-if ! curl -fsSL -H "Cache-Control: no-cache" "$URL/pget" -o "$TMPFILE"; then
+if ! curl -fsSL -H "Cache-Control: no-cache" "$URL/pmget" -o "$TMPFILE"; then
     echo "${E}Download failed${R}"
     rm -f "$TMPFILE"
     exit 1
 fi
 
 # Verify download (check it's not empty and contains our signature)
-if [[ ! -s "$TMPFILE" ]] || ! grep -q "github.com/gabrielmsilva00/pget" "$TMPFILE"; then
+if [[ ! -s "$TMPFILE" ]] || ! grep -q "github.com/gabrielmsilva00/pmget" "$TMPFILE"; then
     echo "${E}Download invalid or corrupted${R}"
     rm -f "$TMPFILE"
     exit 1
@@ -104,14 +104,14 @@ fi
 
 # Install
 if [[ "$NEED_SUDO" == true ]]; then
-    sudo mv "$TMPFILE" "$DIR/pget"
-    sudo chmod +x "$DIR/pget"
+    sudo mv "$TMPFILE" "$DIR/pmget"
+    sudo chmod +x "$DIR/pmget"
 else
-    mv "$TMPFILE" "$DIR/pget"
-    chmod +x "$DIR/pget"
+    mv "$TMPFILE" "$DIR/pmget"
+    chmod +x "$DIR/pmget"
 fi
 
-echo "${G}✓${R} Installed to $DIR/pget"
+echo "${G}✓${R} Installed to $DIR/pmget"
 
 # Add to PATH if needed
 if [[ "$NEED_SUDO" == false && ":$PATH:" != *":$DIR:"* ]]; then
@@ -127,12 +127,12 @@ if [[ "$NEED_SUDO" == false && ":$PATH:" != *":$DIR:"* ]]; then
     EXPORT_LINE="export PATH=\"\$PATH:$DIR\""
     if ! grep -qF "$DIR" "$SHELL_RC" 2>/dev/null; then
         echo "" >> "$SHELL_RC"
-        echo "# pget" >> "$SHELL_RC"
+        echo "# pmget" >> "$SHELL_RC"
         echo "$EXPORT_LINE" >> "$SHELL_RC"
         echo "${G}✓${R} Added to PATH in $SHELL_RC"
         echo "${Y}!${R} Run: source $SHELL_RC"
     fi
 fi
 
-echo -e "\n${G}Done!${R} Run: pget"
+echo -e "\n${G}Done!${R} Run: pmget"
 

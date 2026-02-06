@@ -1,11 +1,11 @@
-# pget
+# pmget
 
 > Universal package manager TUI — install and remove packages with fuzzy search.
 
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pget/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/install.sh | bash
 ```
 
 ### Install Options
@@ -36,11 +36,11 @@ curl ... | bash -s -- --usr     # System-wide install
 ## Usage
 
 ```bash
-pget              # TUI mode
-pget -s           # TUI with sudo
-pget -c -i vim    # CLI: install vim
-pget -c -r nano   # CLI: remove nano  
-pget -c -s -i git -r vim   # Both operations with sudo
+pmget              # TUI mode
+pmget -s           # TUI with sudo
+pmget -c -i vim    # CLI: install vim
+pmget -c -r nano   # CLI: remove nano  
+pmget -c -s -i git -r vim   # Both operations with sudo
 ```
 
 ## Options
@@ -76,7 +76,7 @@ pget -c -s -i git -r vim   # Both operations with sudo
 ## Uninstall
 
 ```bash
-rm ~/.local/bin/pget
+rm ~/.local/bin/pmget
 ```
 
 ## License

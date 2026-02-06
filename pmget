@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pget - Package Getter (https://github.com/gabrielmsilva00/pget)
+# pmget - Package Getter (https://github.com/gabrielmsilva00/pmget)
 
 VERSION="1.1.4"
 
@@ -108,8 +108,8 @@ parse_args() {
             -s|--sudo)    USE_SUDO=true ;;
             -i|--install) mode="i" ;;
             -r|--remove)  mode="r" ;;
-            -v|--version) echo "pget v${VERSION}"; exit 0 ;;
-            -h|--help)    echo "pget v${VERSION}"; exit 0 ;;
+            -v|--version) echo "pmget v${VERSION}"; exit 0 ;;
+            -h|--help)    echo "pmget v${VERSION}"; exit 0 ;;
             --info)       detect_pm; show_info "$2"; exit 0 ;;
             *) [[ "$mode" == "i" ]] && INSTALL_PKGS+=("$1"); [[ "$mode" == "r" ]] && REMOVE_PKGS+=("$1") ;;
         esac
@@ -118,7 +118,7 @@ parse_args() {
 }
 
 run_cli() {
-    echo "${BOLD}${CYAN}pget${RESET} (${DETECTED_PM})$([[ "$USE_SUDO" == true ]] && echo " [sudo]")"
+    echo "${BOLD}${CYAN}pmget${RESET} (${DETECTED_PM})$([[ "$USE_SUDO" == true ]] && echo " [sudo]")"
     local rc=0
     [[ ${#REMOVE_PKGS[@]} -gt 0 ]] && { echo "${RED}Removing:${RESET} ${REMOVE_PKGS[*]}"; run_pm remove "${REMOVE_PKGS[@]}" || rc=1; echo; }
     [[ ${#INSTALL_PKGS[@]} -gt 0 ]] && { echo "${GREEN}Installing:${RESET} ${INSTALL_PKGS[*]}"; run_pm install "${INSTALL_PKGS[@]}" || rc=1; }
@@ -309,7 +309,7 @@ EOF
     # Initial Generation
     bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" "$INST_FILE" "$UPGR_FILE" | \
     fzf --ansi --no-multi \
-        --prompt="pget> " \
+        --prompt="pmget> " \
         --delimiter=$'\t' \
         --with-nth=2 \
         --header-lines=3 \
@@ -346,7 +346,7 @@ EOF
     fi
 
     echo
-    local cmd="pget -c"
+    local cmd="pmget -c"
     [[ "$USE_SUDO" == true ]] && cmd+=" -s"
     [[ -n "$inst" ]] && cmd+=" -i $inst"
     [[ -n "$rem" ]] && cmd+=" -r $rem"
