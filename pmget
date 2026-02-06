@@ -526,17 +526,11 @@ EOF
     # Define Commands using bash to execute the helper script
     # Field 1 is the package ID (always clean), Field 2+ is for display.
     local helper_cmd="bash '$HELPER_SCRIPT'"
-    # Use proper quoting for {1} to handle special chars/spaces in all commands
+    local cmd_reload="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE'"
     local cmd_update_next="$helper_cmd update-state '$STATE_FILE' '{1}' next '$INST_FILE' '$UPGR_FILE'"
     local cmd_update_prev="$helper_cmd update-state '$STATE_FILE' '{1}' prev '$INST_FILE' '$UPGR_FILE'"
     local cmd_toggle="$helper_cmd update-state '$STATE_FILE' '{1}' toggle_or_select '$INST_FILE' '$UPGR_FILE'"
-    
-    # Atomic reload with unique temp file to prevent race conditions and cursor jumping
-    local cmd_reload="f=\$(mktemp \"$TMP_DIR/fzf.XXXXXX\"); $helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' > \"\$f\" && cat \"\$f\" && rm -f \"\$f\""
-    
-    # Quote package name for preview transparency
-    local cmd_preview="bash '$HELPER_SCRIPT' info '{1}'"
-    local cmd_sudo_toggle="$helper_cmd toggle-sudo '$STATE_FILE'"
+    local cmd_preview="$helper_cmd info '{1}'"
 
     # Enter Non-canonical mode to prevent escape sequence leakage (per user insight)
     if [[ -t 0 ]]; then
@@ -555,17 +549,16 @@ EOF
             --delimiter=$'\t' \
             --with-nth=2 \
             --header-lines=4 \
-            --tiebreak=begin,length \
-            --no-sort \
+            --tiebreak=begin,length,index \
             --preview="$cmd_preview" \
             --preview-window="top:40%" \
             --layout=reverse \
             --info=inline \
             --no-bold \
-            --bind "right:execute-silent($cmd_update_next)+reload($cmd_reload)" \
-            --bind "left:execute-silent($cmd_update_prev)+reload($cmd_reload)" \
-            --bind "space:execute-silent($cmd_toggle)+reload($cmd_reload)" \
-            --bind "tab:execute-silent($cmd_sudo_toggle)+reload($cmd_reload)" \
+            --bind "right:reload($cmd_update_next && $cmd_reload)" \
+            --bind "left:reload($cmd_update_prev && $cmd_reload)" \
+            --bind "space:reload($cmd_toggle && $cmd_reload)" \
+            --bind "tab:reload($helper_cmd toggle-sudo '$STATE_FILE' && $cmd_reload)" \
             --bind "enter:accept" \
             > /dev/null
         
