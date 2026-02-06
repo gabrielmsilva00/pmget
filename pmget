@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pmget - Package Manager Getter (https://github.com/gabrielmsilva00/pmget)
 
-VERSION="1.1.5"
+VERSION="1.1.6"
 
 # Colors
 BOLD=$(tput bold 2>/dev/null) || BOLD=""
@@ -10,6 +10,158 @@ RED=$(tput setaf 1 2>/dev/null) || RED=""
 GREEN=$(tput setaf 2 2>/dev/null) || GREEN=""
 YELLOW=$(tput setaf 3 2>/dev/null) || YELLOW=""
 CYAN=$(tput setaf 6 2>/dev/null) || CYAN=""
+
+# ============================================================================
+# SELF-INSTALLATION MODE
+# When piped or run with --install, pmget installs itself
+# Usage: curl -fsSL <url>/pmget | bash [-s -- OPTIONS]
+# ============================================================================
+
+PMGET_URL="https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget"
+
+self_install() {
+    local install_mode=""
+    local need_sudo=false
+    local install_dir=""
+    local missing_deps=()
+
+    # Parse install arguments
+    for arg in "$@"; do
+        case "$arg" in
+            --root|--usr|--local)
+                [[ -n "$install_mode" ]] && { echo "${RED}Error: Only one of --root, --usr, --local allowed${RESET}"; exit 1; }
+                install_mode="${arg#--}"
+                ;;
+            -h|--help)
+                echo "pmget self-installer v${VERSION}"
+                echo "Usage: curl -fsSL <url>/pmget | bash [-s -- OPTIONS]"
+                echo "       pmget --install [--local | --usr | --root]"
+                echo ""
+                echo "Options:"
+                echo "  --local  Install to ~/.local/bin (default)"
+                echo "  --usr    Install to /usr/local/bin (requires sudo)"
+                echo "  --root   Install to /root/.local/bin (requires sudo)"
+                exit 0
+                ;;
+        esac
+    done
+
+    # Set install directory based on mode
+    case "${install_mode:-local}" in
+        local) install_dir="$HOME/.local/bin" ;;
+        usr)   install_dir="/usr/local/bin"; need_sudo=true ;;
+        root)  install_dir="/root/.local/bin"; need_sudo=true ;;
+    esac
+
+    echo "${BOLD}${CYAN}pmget installer${RESET}"
+    echo "${CYAN}Target:${RESET} $install_dir"
+    echo
+
+    # Check for existing pmget installation
+    local existing_pmget
+    existing_pmget=$(command -v pmget 2>/dev/null) || true
+    if [[ -n "$existing_pmget" ]]; then
+        if grep -q "github.com/gabrielmsilva00/pmget" "$existing_pmget" 2>/dev/null; then
+            local current_ver
+            current_ver=$("$existing_pmget" -v 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "?")
+            if [[ "$current_ver" == "$VERSION" ]]; then
+                echo "${GREEN}✓${RESET} pmget v${VERSION} is already installed"
+                exit 0
+            fi
+            echo "${CYAN}→${RESET} Updating pmget v${current_ver} to v${VERSION}"
+        else
+            echo "${YELLOW}⚠${RESET} Different 'pmget' found: $existing_pmget"
+            echo "  Will install to: $install_dir/pmget"
+        fi
+        echo
+    fi
+
+    # Check dependencies
+    command -v curl &>/dev/null && echo "${GREEN}✓${RESET} curl" || { echo "${RED}✗${RESET} curl (required)"; missing_deps+=("curl"); }
+    command -v fzf &>/dev/null && echo "${GREEN}✓${RESET} fzf" || { echo "${RED}✗${RESET} fzf (required)"; missing_deps+=("fzf"); }
+
+    local pm_found=""
+    for p in pkg nala apt dpkg dnf yum pacman zypper apk; do
+        command -v "$p" &>/dev/null && { pm_found="$p"; echo "${GREEN}✓${RESET} $p"; break; }
+    done
+    [[ -z "$pm_found" ]] && { echo "${RED}✗${RESET} package manager (pkg/nala/apt/dpkg/dnf/yum/pacman/zypper/apk)"; missing_deps+=("package-manager"); }
+
+    # Exit if missing dependencies
+    if [[ ${#missing_deps[@]} -gt 0 ]]; then
+        echo
+        echo "${RED}Missing dependencies:${RESET} ${missing_deps[*]}"
+        echo "Please install them and re-run the installer."
+        exit 1
+    fi
+
+    echo
+
+    # Create directory
+    if [[ "$need_sudo" == true ]]; then
+        sudo mkdir -p "$install_dir"
+    else
+        mkdir -p "$install_dir"
+    fi
+
+    # Download pmget
+    local tmpfile
+    tmpfile=$(mktemp)
+    if ! curl -fsSL -H "Cache-Control: no-cache" "$PMGET_URL" -o "$tmpfile"; then
+        echo "${RED}Download failed${RESET}"
+        rm -f "$tmpfile"
+        exit 1
+    fi
+
+    # Verify download
+    if [[ ! -s "$tmpfile" ]] || ! grep -q "github.com/gabrielmsilva00/pmget" "$tmpfile"; then
+        echo "${RED}Download invalid or corrupted${RESET}"
+        rm -f "$tmpfile"
+        exit 1
+    fi
+
+    # Install
+    if [[ "$need_sudo" == true ]]; then
+        sudo mv "$tmpfile" "$install_dir/pmget"
+        sudo chmod +x "$install_dir/pmget"
+    else
+        mv "$tmpfile" "$install_dir/pmget"
+        chmod +x "$install_dir/pmget"
+    fi
+
+    echo "${GREEN}✓${RESET} Installed to $install_dir/pmget"
+
+    # Add to PATH if needed
+    if [[ "$need_sudo" == false && ":$PATH:" != *":$install_dir:"* ]]; then
+        local shell_name shell_rc
+        shell_name=$(basename "$SHELL")
+        case "$shell_name" in
+            zsh)  shell_rc="$HOME/.zshrc" ;;
+            bash) shell_rc="$HOME/.bashrc" ;;
+            *)    shell_rc="$HOME/.profile" ;;
+        esac
+
+        local export_line="export PATH=\"\$PATH:$install_dir\""
+        if ! grep -qF "$install_dir" "$shell_rc" 2>/dev/null; then
+            echo "" >> "$shell_rc"
+            echo "# pmget" >> "$shell_rc"
+            echo "$export_line" >> "$shell_rc"
+            echo "${GREEN}✓${RESET} Added to PATH in $shell_rc"
+            echo "${YELLOW}!${RESET} Run: source $shell_rc"
+        fi
+    fi
+
+    echo -e "\n${GREEN}Done!${RESET} Run: pmget"
+    exit 0
+}
+
+# Detect if running from pipe (curl | bash) - auto-install mode
+if [[ ! -t 0 && "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    self_install "$@"
+fi
+
+# ============================================================================
+# NORMAL PMGET OPERATION
+# ============================================================================
 
 CLI_MODE=false
 USE_SUDO=false
@@ -97,8 +249,39 @@ show_info() {
     esac
 }
 
+show_help() {
+    cat <<EOF
+${BOLD}${CYAN}pmget${RESET} v${VERSION} - Package Manager Getter
+https://github.com/gabrielmsilva00/pmget
 
+${BOLD}Usage:${RESET}
+  pmget                     Launch interactive TUI
+  pmget -c [OPTIONS]        CLI mode
+  pmget --self-install      Install/update pmget itself
 
+${BOLD}Install pmget (one-liner):${RESET}
+  curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash
+
+${BOLD}Options:${RESET}
+  -c, --cli                 CLI mode (non-interactive)
+  -s, --sudo                Use sudo for operations
+  -i PKG, --install PKG     Install packages (CLI mode)
+  -r PKG, --remove PKG      Remove packages (CLI mode)
+  --info PKG                Show package information
+  --self-install [OPTS]     Install/update pmget itself
+      --local               Install to ~/.local/bin (default)
+      --usr                 Install to /usr/local/bin
+      --root                Install to /root/.local/bin
+  -v, --version             Show version
+  -h, --help                Show this help
+
+${BOLD}Examples:${RESET}
+  pmget                          # Launch TUI
+  pmget -c -s -i vim htop        # Install vim and htop with sudo
+  pmget -c -r nano               # Remove nano
+  pmget --info curl              # Show info for curl package
+EOF
+}
 
 parse_args() {
     local mode=""
@@ -109,7 +292,8 @@ parse_args() {
             -i|--install) mode="i" ;;
             -r|--remove)  mode="r" ;;
             -v|--version) echo "pmget v${VERSION}"; exit 0 ;;
-            -h|--help)    echo "pmget v${VERSION}"; exit 0 ;;
+            -h|--help)    show_help; exit 0 ;;
+            --self-install) self_install "${@:2}"; exit 0 ;;
             --info)       detect_pm; show_info "$2"; exit 0 ;;
             *) [[ "$mode" == "i" ]] && INSTALL_PKGS+=("$1"); [[ "$mode" == "r" ]] && REMOVE_PKGS+=("$1") ;;
         esac
