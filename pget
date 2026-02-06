@@ -195,14 +195,18 @@ _internal_gen_list() {
     local state_file="$2"
     awk -v state_file="$state_file" '
     BEGIN {
+        sudo_on = 0
         while ((getline line < state_file) > 0) {
             split(line, parts, "=")
+            if (parts[1] == "__SUDO__" && parts[2] == "true") sudo_on = 1
             if (parts[1] !~ /^__/) {
                 state[parts[1]] = parts[2]
             }
         }
         close(state_file)
-        GREEN="\033[32m"; RED="\033[31m"; RESET="\033[0m"
+        GREEN="\033[32m"; RED="\033[31m"; RESET="\033[0m"; BOLD="\033[1m"; CYAN="\033[36m"
+        
+        printf BOLD CYAN "  SUDO: " RESET BOLD "%s\n", (sudo_on ? GREEN "ON" : RED "OFF") RESET
     }
     {
         s = state[$0]
@@ -243,13 +247,15 @@ EOF
     bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" | \
     fzf --ansi --no-multi \
         --prompt="pget: " \
-        --header="Enter=Exec | Tab=Sudo | ←→=Select/Cycle" \
+        --header="Space/←→:Select/Cycle | Tab:Sudo | Enter:Exec" \
+        --header-lines=1 \
         --preview="$cmd_preview" \
         --preview-window="top:40%" \
         --layout=reverse \
         --info=inline \
         --bind "right:execute-silent($cmd_update_next)+reload($cmd_reload)" \
         --bind "left:execute-silent($cmd_update_prev)+reload($cmd_reload)" \
+        --bind "space:execute-silent($cmd_toggle)+reload($cmd_reload)" \
         --bind "tab:execute-silent($cmd_sudo_toggle)+reload($cmd_reload)" \
         --bind "alt-enter:print-query" \
         > /dev/null
