@@ -16,8 +16,6 @@ declare -a INSTALL_PKGS=()
 declare -a REMOVE_PKGS=()
 DETECTED_PM=""
 
-readonly PKG_REGEX='^[a-zA-Z0-9][a-zA-Z0-9.+_-]*$'
-
 cleanup() { tput cnorm 2>/dev/null || true; }
 trap cleanup EXIT INT
 
@@ -25,32 +23,31 @@ detect_pm() {
     for pm in pkg nala apt dpkg dnf yum pacman zypper apk; do
         command -v "$pm" &>/dev/null && { DETECTED_PM="$pm"; return 0; }
     done
-    echo "${RED}No supported package manager found${RESET}" >&2; exit 1
+    echo "${RED}No supported package manager${RESET}" >&2; exit 1
 }
 
 run_pm() {
     local action="$1"; shift
-    local cmd=()
-    [[ "$USE_SUDO" == true ]] && cmd+=(sudo)
+    local cmd=(); [[ "$USE_SUDO" == true ]] && cmd+=(sudo)
     case "$DETECTED_PM:$action" in
-        pkg:install)     cmd+=(pkg install -y "$@") ;;
-        pkg:remove)      cmd+=(pkg uninstall -y "$@") ;;
-        nala:install)    cmd+=(nala install -y "$@") ;;
-        nala:remove)     cmd+=(nala remove -y "$@") ;;
-        apt:install)     cmd+=(apt install -y "$@") ;;
-        apt:remove)      cmd+=(apt remove -y "$@") ;;
-        dpkg:install)    cmd+=(dpkg -i "$@") ;;
-        dpkg:remove)     cmd+=(dpkg -r "$@") ;;
-        dnf:install)     cmd+=(dnf install -y "$@") ;;
-        dnf:remove)      cmd+=(dnf remove -y "$@") ;;
-        yum:install)     cmd+=(yum install -y "$@") ;;
-        yum:remove)      cmd+=(yum remove -y "$@") ;;
-        pacman:install)  cmd+=(pacman -S --noconfirm "$@") ;;
-        pacman:remove)   cmd+=(pacman -R --noconfirm "$@") ;;
-        zypper:install)  cmd+=(zypper install -y "$@") ;;
-        zypper:remove)   cmd+=(zypper remove -y "$@") ;;
-        apk:install)     cmd+=(apk add "$@") ;;
-        apk:remove)      cmd+=(apk del "$@") ;;
+        pkg:install)    cmd+=(pkg install -y "$@") ;;
+        pkg:remove)     cmd+=(pkg uninstall -y "$@") ;;
+        nala:install)   cmd+=(nala install -y "$@") ;;
+        nala:remove)    cmd+=(nala remove -y "$@") ;;
+        apt:install)    cmd+=(apt install -y "$@") ;;
+        apt:remove)     cmd+=(apt remove -y "$@") ;;
+        dpkg:install)   cmd+=(dpkg -i "$@") ;;
+        dpkg:remove)    cmd+=(dpkg -r "$@") ;;
+        dnf:install)    cmd+=(dnf install -y "$@") ;;
+        dnf:remove)     cmd+=(dnf remove -y "$@") ;;
+        yum:install)    cmd+=(yum install -y "$@") ;;
+        yum:remove)     cmd+=(yum remove -y "$@") ;;
+        pacman:install) cmd+=(pacman -S --noconfirm "$@") ;;
+        pacman:remove)  cmd+=(pacman -R --noconfirm "$@") ;;
+        zypper:install) cmd+=(zypper install -y "$@") ;;
+        zypper:remove)  cmd+=(zypper remove -y "$@") ;;
+        apk:install)    cmd+=(apk add "$@") ;;
+        apk:remove)     cmd+=(apk del "$@") ;;
     esac
     "${cmd[@]}"
 }
@@ -78,7 +75,7 @@ list_installed() {
     esac
 }
 
-show_pkg_info() {
+show_info() {
     echo -e "${BOLD}${CYAN}Package Info:${RESET}\n"
     case "$DETECTED_PM" in
         pkg)      pkg show "$1" 2>/dev/null ;;
@@ -92,41 +89,21 @@ show_pkg_info() {
     esac
 }
 
-show_help() {
-    cat <<EOF
-${BOLD}pget${RESET} v${VERSION} - Package Getter
-
-${BOLD}Usage:${RESET}
-  pget              TUI mode
-  pget -c -i <pkg>  CLI install
-  pget -c -r <pkg>  CLI remove
-
-${BOLD}Options:${RESET}
-  -c  CLI mode    -s  sudo    -i  install    -r  remove
-  -v  version     -h  help
-
-${BOLD}TUI:${RESET} i=install mode, r=remove mode, Tab=select, Enter=confirm, s=sudo, x=execute
-EOF
-    exit 0
-}
+show_help() { echo "pget v${VERSION} | -c=cli -s=sudo -i=install -r=remove -v=version -h=help"; exit 0; }
 
 parse_args() {
     local mode=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            -c|--cli)     CLI_MODE=true ;;
-            -s|--sudo)    USE_SUDO=true ;;
-            -i|--install) mode="i" ;;
-            -r|--remove)  mode="r" ;;
-            -v|--version) echo "pget v${VERSION}"; exit 0 ;;
-            -h|--help)    show_help ;;
-            --info)       detect_pm; show_pkg_info "$2"; exit 0 ;;
-            -*)           echo "${RED}Unknown: $1${RESET}" >&2; exit 1 ;;
-            *)
-                [[ "$1" =~ $PKG_REGEX ]] || { echo "${RED}Invalid: $1${RESET}" >&2; exit 1; }
-                [[ "$mode" == "i" ]] && INSTALL_PKGS+=("$1")
-                [[ "$mode" == "r" ]] && REMOVE_PKGS+=("$1")
-                ;;
+            -c) CLI_MODE=true ;;
+            -s) USE_SUDO=true ;;
+            -i) mode="i" ;;
+            -r) mode="r" ;;
+            -v) echo "pget v${VERSION}"; exit 0 ;;
+            -h) show_help ;;
+            --info) detect_pm; show_info "$2"; exit 0 ;;
+            -*) echo "${RED}Unknown: $1${RESET}" >&2; exit 1 ;;
+            *) [[ "$mode" == "i" ]] && INSTALL_PKGS+=("$1"); [[ "$mode" == "r" ]] && REMOVE_PKGS+=("$1") ;;
         esac
         shift
     done
@@ -134,104 +111,47 @@ parse_args() {
 
 run_cli() {
     echo "${BOLD}${CYAN}pget${RESET} (${DETECTED_PM})$([[ "$USE_SUDO" == true ]] && echo " [sudo]")"
-    echo
-    local rc=0
-    
-    [[ ${#REMOVE_PKGS[@]} -gt 0 ]] && {
-        echo "${RED}Removing:${RESET} ${REMOVE_PKGS[*]}"
-        run_pm remove "${REMOVE_PKGS[@]}" && echo "${GREEN}✓${RESET}" || { echo "${RED}✗${RESET}"; rc=1; }
-        echo
-    }
-    
-    [[ ${#INSTALL_PKGS[@]} -gt 0 ]] && {
-        echo "${GREEN}Installing:${RESET} ${INSTALL_PKGS[*]}"
-        run_pm install "${INSTALL_PKGS[@]}" && echo "${GREEN}✓${RESET}" || { echo "${RED}✗${RESET}"; rc=1; }
-    }
-    
-    [[ ${#INSTALL_PKGS[@]} -eq 0 && ${#REMOVE_PKGS[@]} -eq 0 ]] && { echo "${YELLOW}No packages${RESET}"; rc=1; }
-    exit $rc
+    [[ ${#REMOVE_PKGS[@]} -gt 0 ]] && { echo "${RED}Removing:${RESET} ${REMOVE_PKGS[*]}"; run_pm remove "${REMOVE_PKGS[@]}"; echo; }
+    [[ ${#INSTALL_PKGS[@]} -gt 0 ]] && { echo "${GREEN}Installing:${RESET} ${INSTALL_PKGS[*]}"; run_pm install "${INSTALL_PKGS[@]}"; }
+    [[ ${#INSTALL_PKGS[@]} -eq 0 && ${#REMOVE_PKGS[@]} -eq 0 ]] && echo "${YELLOW}No packages${RESET}"
 }
 
-select_packages() {
-    local mode="$1" prompt color src
-    
-    if [[ "$mode" == "install" ]]; then
-        prompt="${GREEN}[+] Install: ${RESET}"
-        src="list_packages"
-    else
-        prompt="${RED}[-] Remove: ${RESET}"
-        src="list_installed"
-    fi
-    
+# TUI - goes directly to fzf
+run_tui() {
     tput civis 2>/dev/null || true
-    local selected=$($src | fzf -m \
-        --prompt="$prompt" \
-        --header="Tab: select | Enter: confirm | ?: info" \
+    
+    # Direct to fzf with all packages
+    local packages=$(list_packages | fzf -m \
+        --prompt="${BOLD}${GREEN}Package: ${RESET}" \
+        --header="Tab=select Enter=confirm ?=info" \
         --preview="$0 --info {}" \
         --preview-window="top:40%" \
         --bind="?:toggle-preview" \
         --info=inline \
         --ansi | tr "\n" " ")
+    
     tput cnorm 2>/dev/null || true
     
-    echo "$selected"
-}
-
-show_status() {
-    local sudo_txt=""
-    [[ "$USE_SUDO" == true ]] && sudo_txt=" ${CYAN}[sudo]${RESET}"
+    [[ -z "$packages" ]] && { echo "${CYAN}No selection${RESET}"; exit 0; }
     
-    echo
-    echo "${BOLD}${CYAN}pget${RESET} (${DETECTED_PM})${sudo_txt}"
-    [[ ${#INSTALL_PKGS[@]} -gt 0 ]] && echo "${GREEN}[+] Install:${RESET} ${INSTALL_PKGS[*]}"
-    [[ ${#REMOVE_PKGS[@]} -gt 0 ]] && echo "${RED}[-] Remove:${RESET} ${REMOVE_PKGS[*]}"
-    [[ ${#INSTALL_PKGS[@]} -eq 0 && ${#REMOVE_PKGS[@]} -eq 0 ]] && echo "${YELLOW}(no packages selected)${RESET}"
-}
-
-run_tui() {
-    echo "${BOLD}${CYAN}pget${RESET} (${DETECTED_PM})"
-    echo "${CYAN}i${RESET}=install ${CYAN}r${RESET}=remove ${CYAN}s${RESET}=sudo ${CYAN}x${RESET}=execute ${CYAN}c${RESET}=clear ${CYAN}q${RESET}=quit"
+    echo "Selected: $packages"
     
+    # Ask action
     while true; do
-        show_status
+        read -n1 -rp "[i]nstall/[r]emove/[s]udo($USE_SUDO)/[q]uit: " act
         echo
-        read -n1 -rp "> " choice
-        echo
-        
-        case "$choice" in
+        case "$act" in
             i|I)
-                local pkgs=$(select_packages install)
-                [[ -n "$pkgs" ]] && INSTALL_PKGS+=($pkgs)
-                ;;
+                local cmd="pget -c"; [[ "$USE_SUDO" == true ]] && cmd+=" -s"
+                cmd+=" -i $packages"
+                echo "${CYAN}> $cmd${RESET}"; eval "$cmd"; break ;;
             r|R)
-                local pkgs=$(select_packages remove)
-                [[ -n "$pkgs" ]] && REMOVE_PKGS+=($pkgs)
-                ;;
-            s|S)
-                USE_SUDO=$([[ "$USE_SUDO" == true ]] && echo false || echo true)
-                echo "sudo: $USE_SUDO"
-                ;;
-            c|C)
-                INSTALL_PKGS=()
-                REMOVE_PKGS=()
-                echo "Cleared"
-                ;;
-            x|X)
-                [[ ${#INSTALL_PKGS[@]} -eq 0 && ${#REMOVE_PKGS[@]} -eq 0 ]] && { echo "${YELLOW}Nothing selected${RESET}"; continue; }
-                
-                local cmd="pget -c"
-                [[ "$USE_SUDO" == true ]] && cmd+=" -s"
-                [[ ${#INSTALL_PKGS[@]} -gt 0 ]] && cmd+=" -i ${INSTALL_PKGS[*]}"
-                [[ ${#REMOVE_PKGS[@]} -gt 0 ]] && cmd+=" -r ${REMOVE_PKGS[*]}"
-                
-                echo
-                echo "${CYAN}> ${cmd}${RESET}"
-                echo
-                eval "$cmd"
-                break
-                ;;
+                local cmd="pget -c"; [[ "$USE_SUDO" == true ]] && cmd+=" -s"
+                cmd+=" -r $packages"
+                echo "${CYAN}> $cmd${RESET}"; eval "$cmd"; break ;;
+            s|S) USE_SUDO=$([[ "$USE_SUDO" == true ]] && echo false || echo true); echo "sudo=$USE_SUDO" ;;
             q|Q|"") echo "${CYAN}Exit${RESET}"; break ;;
-            *) echo "${RED}i/r/s/x/c/q${RESET}" ;;
+            *) echo "${RED}i/r/s/q${RESET}" ;;
         esac
     done
 }
