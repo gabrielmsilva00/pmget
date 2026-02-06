@@ -63,7 +63,7 @@ self_install() {
     if [[ -n "$existing_pmget" ]]; then
         if grep -q "github.com/gabrielmsilva00/pmget" "$existing_pmget" 2>/dev/null; then
             local current_ver
-            current_ver=$("$existing_pmget" -v 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "?")
+            current_ver=$("$existing_pmget" -v < /dev/null 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "?")
             if [[ "$current_ver" == "$VERSION" ]]; then
                 echo "${GREEN}✓${RESET} pmget v${VERSION} is already installed"
                 exit 0
@@ -174,7 +174,13 @@ self_install() {
 }
 
 # Detect if running from pipe (curl | bash) - auto-install mode
+# Skip if -v/--version or -h/--help is passed
 if [[ ! -t 0 && "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    for arg in "$@"; do
+        case "$arg" in
+            -v|--version|-h|--help) exec bash "${BASH_SOURCE[0]}" "$@";;
+        esac
+    done
     self_install "$@"
 fi
 
@@ -409,6 +415,7 @@ _internal_state_mod() {
     local inst_file="$4"
     local upgr_file="$5"
     local s=$(_get_state "$sf" "$pkg")
+    s=${s:-0}
     
     # Determine package status
     local is_inst=0 is_upgr=0
