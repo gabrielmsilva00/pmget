@@ -5,14 +5,17 @@
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash
+curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash -s -- --self-install
 ```
 
 This installs `pmget` to `~/.local/bin` by default. For other locations:
 
 ```bash
-curl ... | bash -s -- --usr     # /usr/local/bin (requires sudo)
-curl ... | bash -s -- --root    # /root/.local/bin (requires sudo)
+curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash -s -- --self-install --usr     # /usr/local/bin (requires sudo)
+```
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash -s -- --self-install --root    # /root/.local/bin (requires sudo)
 ```
 
 **Requires:** `fzf` and one of: `apt`, `dnf`, `pacman`, `zypper`, `apk`
