@@ -13,6 +13,7 @@ URL="https://raw.githubusercontent.com/gabrielmsilva00/pmget/main"
 INSTALL_MODE=""
 NEED_SUDO=false
 MISSING_DEPS=()
+VERSION="1.1.4"
 
 # Parse arguments
 for arg in "$@"; do
@@ -51,7 +52,11 @@ if [[ -n "$EXISTING_PMGET" ]]; then
     # Check if it's our pmget by looking for signature
     if grep -q "github.com/gabrielmsilva00/pmget" "$EXISTING_PMGET" 2>/dev/null; then
         CURRENT_VER=$("$EXISTING_PMGET" -v 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "?")
-        echo "${C}→${R} Updating pmget v${CURRENT_VER}"
+        if [[ "$CURRENT_VER" == "$VERSION" ]]; then
+            echo "${G}✓${R} pmget v${VERSION} is already installed"
+            exit 0
+        fi
+        echo "${C}→${R} Updating pmget v${CURRENT_VER} to v${VERSION}"
     else
         echo "${Y}⚠${R} Different 'pmget' found: $EXISTING_PMGET"
         echo "  Will install to: $DIR/pmget"

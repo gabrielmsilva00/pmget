@@ -1,11 +1,19 @@
 # pmget
 
-> Universal package manager TUI — install and remove packages with fuzzy search.
+> Package Manager Getter — fuzzy search and install packages.
 
 ## Install
 
+To install this utility tool, simply run:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/install.sh | bash
+```
+##### This will install `pmget` to `~/.local/bin` by default.
+
+To install system-wide, use the `--usr` or `--root` flags:
+```bash
+curl ... | bash -s -- --usr     # System-wide install
+curl ... | bash -s -- --root    # Root install
 ```
 
 ### Install Options

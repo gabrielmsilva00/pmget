@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pmget - Package Getter (https://github.com/gabrielmsilva00/pmget)
+# pmget - Package Manager Getter (https://github.com/gabrielmsilva00/pmget)
 
 VERSION="1.1.4"
 
