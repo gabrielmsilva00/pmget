@@ -1,0 +1,314 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BOLD=$(tput bold 2>/dev/null) || BOLD=""
+RESET=$(tput sgr0 2>/dev/null) || RESET=""
+RED=$(tput setaf 1 2>/dev/null) || RED=""
+GREEN=$(tput setaf 2 2>/dev/null) || GREEN=""
+YELLOW=$(tput setaf 3 2>/dev/null) || YELLOW=""
+CYAN=$(tput setaf 6 2>/dev/null) || CYAN=""
+
+CLI_MODE=false
+USE_SUDO=false
+declare -a PACKAGES_INSTALL=()
+declare -a PACKAGES_REMOVE=()
+DETECTED_PM=""
+STATE_FILE=""
+INSTALLED_CACHE=""
+
+readonly PKG_REGEX='^[a-zA-Z0-9][a-zA-Z0-9.+_-]*$'
+
+validate_pkg() {
+    [[ "$1" =~ $PKG_REGEX ]] || { echo "${RED}Invalid package name: $1${RESET}" >&2; return 1; }
+}
+
+detect_pm() {
+    local -a pms=(apt dnf yum pacman zypper apk)
+    for pm in "${pms[@]}"; do
+        command -v "$pm" &>/dev/null && { DETECTED_PM="$pm"; return 0; }
+    done
+    echo "${RED}No supported package manager found${RESET}" >&2
+    exit 1
+}
+
+run_pm() {
+    local action="$1"; shift
+    local cmd=()
+    [[ "$USE_SUDO" == true ]] && cmd+=(sudo)
+    
+    case "$DETECTED_PM:$action" in
+        apt:install)     cmd+=(apt install -y "$@") ;;
+        apt:remove)      cmd+=(apt remove -y "$@"); "${cmd[@]}" && { cmd=(apt autoremove -y); [[ "$USE_SUDO" == true ]] && cmd=(sudo "${cmd[@]}"); "${cmd[@]}"; return; } ;;
+        dnf:install)     cmd+=(dnf install -y "$@") ;;
+        dnf:remove)      cmd+=(dnf remove -y "$@") ;;
+        yum:install)     cmd+=(yum install -y "$@") ;;
+        yum:remove)      cmd+=(yum remove -y "$@") ;;
+        pacman:install)  cmd+=(pacman -S --noconfirm "$@") ;;
+        pacman:remove)   cmd+=(pacman -R --noconfirm "$@") ;;
+        zypper:install)  cmd+=(zypper install -y "$@") ;;
+        zypper:remove)   cmd+=(zypper remove -y "$@") ;;
+        apk:install)     cmd+=(apk add "$@") ;;
+        apk:remove)      cmd+=(apk del "$@") ;;
+    esac
+    "${cmd[@]}"
+}
+
+list_available() {
+    case "$DETECTED_PM" in
+        apt)     apt-cache pkgnames 2>/dev/null ;;
+        dnf)     dnf repoquery --qf '%{name}' 2>/dev/null ;;
+        yum)     yum list available 2>/dev/null | awk 'NR>1{print $1}' | cut -d. -f1 ;;
+        pacman)  pacman -Slq 2>/dev/null ;;
+        zypper)  zypper packages 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3);print $3}' ;;
+        apk)     apk search -q 2>/dev/null ;;
+    esac | sort -u
+}
+
+list_installed() {
+    case "$DETECTED_PM" in
+        apt)     dpkg-query -W -f='${Package}\n' 2>/dev/null ;;
+        dnf|yum) rpm -qa --qf '%{NAME}\n' 2>/dev/null ;;
+        pacman)  pacman -Qq 2>/dev/null ;;
+        zypper)  rpm -qa --qf '%{NAME}\n' 2>/dev/null ;;
+        apk)     apk list -I 2>/dev/null | cut -d' ' -f1 | sed 's/-[0-9].*//' ;;
+    esac | sort -u
+}
+
+get_version() {
+    local pkg="$1"
+    case "$DETECTED_PM" in
+        apt)     dpkg-query -W -f='${Version}' "$pkg" 2>/dev/null ;;
+        dnf|yum|zypper) rpm -q --qf '%{VERSION}' "$pkg" 2>/dev/null ;;
+        pacman)  pacman -Q "$pkg" 2>/dev/null | awk '{print $2}' ;;
+        apk)     apk version "$pkg" 2>/dev/null | awk 'NR==2{print $1}' | cut -d- -f2 ;;
+    esac
+}
+
+show_info() {
+    local pkg="$1"
+    case "$DETECTED_PM" in
+        apt)     apt show "$pkg" 2>/dev/null ;;
+        dnf)     dnf info "$pkg" 2>/dev/null ;;
+        yum)     yum info "$pkg" 2>/dev/null ;;
+        pacman)  pacman -Si "$pkg" 2>/dev/null || pacman -Qi "$pkg" 2>/dev/null ;;
+        zypper)  zypper info "$pkg" 2>/dev/null ;;
+        apk)     apk info -a "$pkg" 2>/dev/null ;;
+    esac
+}
+
+show_help() {
+    cat <<EOF
+${BOLD}pget${RESET} - Package Getter
+
+${BOLD}Usage:${RESET}
+  pget [options]
+  pget -c [-s] -i <pkgs...> -r <pkgs...>
+
+${BOLD}Options:${RESET}
+  -c, --cli       CLI mode (direct execution)
+  -s, --sudo      Run with sudo
+  -i, --install   Packages to install
+  -r, --remove    Packages to remove
+  -h, --help      Show help
+
+${BOLD}TUI Controls:${RESET}
+  ↑/↓         Navigate
+  Enter       Select [+] or execute if selected
+  →           Cycle: [ ] → [+] → [-]
+  ←           Cycle: [ ] → [-] → [+]
+  Ctrl+Enter  Execute selections
+  ?           Toggle preview
+  Esc         Exit
+
+${BOLD}States:${RESET}
+  ${GREEN}[+]${RESET}  Install    ${RED}[-]${RESET}  Remove    [ ]  None
+
+${BOLD}Supported:${RESET} apt, dnf, yum, pacman, zypper, apk
+EOF
+    exit 0
+}
+
+parse_args() {
+    local list=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -c|--cli)     CLI_MODE=true ;;
+            -s|--sudo)    USE_SUDO=true ;;
+            -i|--install) list="i" ;;
+            -r|--remove)  list="r" ;;
+            -h|--help)    show_help ;;
+            -*)           echo "${RED}Unknown: $1${RESET}" >&2; exit 1 ;;
+            *)
+                validate_pkg "$1" || exit 1
+                [[ "$list" == "i" ]] && PACKAGES_INSTALL+=("$1")
+                [[ "$list" == "r" ]] && PACKAGES_REMOVE+=("$1")
+                ;;
+        esac
+        shift
+    done
+}
+
+run_cli() {
+    local rc=0
+    echo "${BOLD}${CYAN}pget${RESET} (${DETECTED_PM})$( [[ "$USE_SUDO" == true ]] && echo " ${CYAN}[sudo]${RESET}" )"
+    echo
+    
+    if [[ ${#PACKAGES_REMOVE[@]} -gt 0 ]]; then
+        echo "${RED}Removing:${RESET} ${PACKAGES_REMOVE[*]}"
+        run_pm remove "${PACKAGES_REMOVE[@]}" && echo "${GREEN}✓ Done${RESET}" || { echo "${RED}✗ Failed${RESET}"; rc=1; }
+        echo
+    fi
+    
+    if [[ ${#PACKAGES_INSTALL[@]} -gt 0 ]]; then
+        echo "${GREEN}Installing:${RESET} ${PACKAGES_INSTALL[*]}"
+        run_pm install "${PACKAGES_INSTALL[@]}" && echo "${GREEN}✓ Done${RESET}" || { echo "${RED}✗ Failed${RESET}"; rc=1; }
+    fi
+    
+    [[ ${#PACKAGES_INSTALL[@]} -eq 0 && ${#PACKAGES_REMOVE[@]} -eq 0 ]] && {
+        echo "${YELLOW}No packages specified${RESET}"
+        rc=1
+    }
+    exit $rc
+}
+
+cleanup() {
+    tput cnorm 2>/dev/null || true
+    [[ -n "$STATE_FILE" && -f "$STATE_FILE" ]] && rm -f "$STATE_FILE"
+}
+trap cleanup EXIT
+
+get_state() {
+    grep -E "^$1:" "$STATE_FILE" 2>/dev/null | cut -d: -f2 || echo 0
+}
+
+set_state() {
+    local pkg="$1" state="$2"
+    grep -v "^${pkg}:" "$STATE_FILE" > "${STATE_FILE}.tmp" 2>/dev/null || true
+    mv "${STATE_FILE}.tmp" "$STATE_FILE"
+    [[ "$state" != "0" ]] && echo "${pkg}:${state}" >> "$STATE_FILE"
+}
+
+cycle_fwd() {
+    local s=$(get_state "$1")
+    set_state "$1" $(( (s + 1) % 3 ))
+}
+
+cycle_bwd() {
+    local s=$(get_state "$1")
+    set_state "$1" $(( (s + 2) % 3 ))
+}
+
+gen_list() {
+    while IFS= read -r pkg; do
+        [[ -z "$pkg" ]] && continue
+        local s=$(get_state "$pkg")
+        local marker="[ ]" color=""
+        case "$s" in
+            1) marker="[+]"; color="$GREEN" ;;
+            2) marker="[-]"; color="$RED" ;;
+        esac
+        local inst=""
+        if grep -qxF "$pkg" <<< "$INSTALLED_CACHE"; then
+            local v=$(get_version "$pkg")
+            inst=" ${YELLOW}[${v:-installed}]${RESET}"
+        fi
+        echo -e "${color}${BOLD}${marker}${RESET} ${pkg}${inst}"
+    done < <(list_available)
+}
+
+build_cmd() {
+    local cmd="pget -c"
+    [[ "$USE_SUDO" == true ]] && cmd+=" -s"
+    local i=$(grep ':1$' "$STATE_FILE" 2>/dev/null | cut -d: -f1 | tr '\n' ' ')
+    local r=$(grep ':2$' "$STATE_FILE" 2>/dev/null | cut -d: -f1 | tr '\n' ' ')
+    [[ -n "$i" ]] && cmd+=" -i $i"
+    [[ -n "$r" ]] && cmd+=" -r $r"
+    echo "$cmd"
+}
+
+exec_sel() {
+    local ic=$(grep -c ':1$' "$STATE_FILE" 2>/dev/null) || ic=0
+    local rc=$(grep -c ':2$' "$STATE_FILE" 2>/dev/null) || rc=0
+    
+    [[ "$ic" -eq 0 && "$rc" -eq 0 ]] && { echo "${YELLOW}Nothing selected${RESET}"; return 1; }
+    
+    echo
+    echo "${BOLD}${CYAN}══════════════════════════════${RESET}"
+    [[ "$ic" -gt 0 ]] && { echo "${GREEN}[+] Install:${RESET}"; grep ':1$' "$STATE_FILE" | cut -d: -f1 | sed 's/^/    /'; }
+    [[ "$rc" -gt 0 ]] && { echo "${RED}[-] Remove:${RESET}"; grep ':2$' "$STATE_FILE" | cut -d: -f1 | sed 's/^/    /'; }
+    echo "${BOLD}${CYAN}══════════════════════════════${RESET}"
+    echo
+    
+    while true; do
+        local sudo_ind=""
+        [[ "$USE_SUDO" == true ]] && sudo_ind="${CYAN}[sudo]${RESET} "
+        read -n1 -rp "${sudo_ind}Proceed? [Y/n/s/q]: " c; echo
+        case "$c" in
+            ""|y|Y)
+                local cmd=$(build_cmd)
+                echo "${CYAN}> ${cmd}${RESET}"
+                echo
+                $cmd
+                return 0
+                ;;
+            s|S)
+                USE_SUDO=$([[ "$USE_SUDO" == true ]] && echo false || echo true)
+                echo "${CYAN}sudo: $USE_SUDO${RESET}"
+                ;;
+            n|N) echo "${CYAN}Cancelled${RESET}"; return 1 ;;
+            q|Q) exit 0 ;;
+            *) echo "${RED}Y/n/s/q${RESET}" ;;
+        esac
+    done
+}
+
+run_tui() {
+    STATE_FILE=$(mktemp)
+    INSTALLED_CACHE=$(list_installed)
+    
+    echo "${BOLD}${CYAN}pget${RESET} (${DETECTED_PM})"
+    
+    while true; do
+        tput civis 2>/dev/null || true
+        
+        local result
+        result=$(gen_list | fzf --ansi --no-multi \
+            --prompt="${GREEN}Package: ${RESET}" \
+            --header="Enter:select/exec │ ←→:cycle │ ^Enter:exec │ ?:info" \
+            --preview="$0 --info {2}" \
+            --preview-window=top:40% \
+            --bind="?:toggle-preview,ctrl-enter:accept" \
+            --expect="enter,right,left,ctrl-enter" \
+            --info=inline 2>/dev/null) || true
+        
+        tput cnorm 2>/dev/null || true
+        
+        local key=$(head -1 <<< "$result")
+        local sel=$(tail -1 <<< "$result")
+        local pkg=$(awk '{print $2}' <<< "$sel")
+        
+        [[ -z "$key" && -z "$sel" ]] && { echo "${CYAN}Exit${RESET}"; break; }
+        [[ -z "$pkg" ]] && continue
+        
+        validate_pkg "$pkg" || continue
+        
+        case "$key" in
+            enter)
+                local cs=$(get_state "$pkg")
+                [[ "$cs" == "0" ]] && set_state "$pkg" 1 || { exec_sel && break; }
+                ;;
+            right) cycle_fwd "$pkg" ;;
+            left)  cycle_bwd "$pkg" ;;
+            ctrl-enter) exec_sel && break ;;
+        esac
+    done
+}
+
+main() {
+    [[ "${1:-}" == "--info" ]] && { detect_pm; show_info "$2"; exit 0; }
+    parse_args "$@"
+    detect_pm
+    [[ "$CLI_MODE" == true ]] && run_cli || run_tui
+}
+
+main "$@"
