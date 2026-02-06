@@ -112,11 +112,26 @@ fi
 
 echo "${G}✓${R} Installed to $DIR/pget"
 
-# Print PATH instructions if needed (don't modify shell config)
+# Add to PATH if needed
 if [[ "$NEED_SUDO" == false && ":$PATH:" != *":$DIR:"* ]]; then
-    echo
-    echo "${C}Add to PATH:${R}"
-    echo "  export PATH=\"\$PATH:$DIR\""
+    # Detect shell config file
+    SHELL_NAME=$(basename "$SHELL")
+    case "$SHELL_NAME" in
+        zsh)  SHELL_RC="$HOME/.zshrc" ;;
+        bash) SHELL_RC="$HOME/.bashrc" ;;
+        *)    SHELL_RC="$HOME/.profile" ;;
+    esac
+    
+    # Add to shell config if not already there
+    EXPORT_LINE="export PATH=\"\$PATH:$DIR\""
+    if ! grep -qF "$DIR" "$SHELL_RC" 2>/dev/null; then
+        echo "" >> "$SHELL_RC"
+        echo "# pget" >> "$SHELL_RC"
+        echo "$EXPORT_LINE" >> "$SHELL_RC"
+        echo "${G}✓${R} Added to PATH in $SHELL_RC"
+        echo "${Y}!${R} Run: source $SHELL_RC"
+    fi
 fi
 
 echo -e "\n${G}Done!${R} Run: pget"
+
