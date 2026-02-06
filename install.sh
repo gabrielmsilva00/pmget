@@ -7,7 +7,7 @@ G=$(tput setaf 2 2>/dev/null) || G=""
 E=$(tput setaf 1 2>/dev/null) || E=""
 C=$(tput setaf 6 2>/dev/null) || C=""
 
-URL="https://raw.githubusercontent.com/GabrielNSD/Search/main"
+URL="https://raw.githubusercontent.com/gabrielmsilva00/pget/main"
 DIR="$HOME/.local/bin"
 
 echo "${B}${C}pget installer${R}"
