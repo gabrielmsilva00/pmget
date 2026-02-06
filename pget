@@ -226,16 +226,22 @@ _internal_gen_list() {
     awk -v state_file="$state_file" -v inst_file="$inst_file" -v upgr_file="$upgr_file" '
     BEGIN {
         sudo_on = 0
-        while ((getline line < state_file) > 0) {
-            split(line, parts, "=")
-            if (parts[1] == "__SUDO__" && parts[2] == "true") sudo_on = 1
-            if (parts[1] !~ /^__/) state[parts[1]] = parts[2]
+        if (state_file != "") {
+            while ((getline line < state_file) > 0) {
+                split(line, parts, "=")
+                if (parts[1] == "__SUDO__" && parts[2] == "true") sudo_on = 1
+                if (parts[1] !~ /^__/) state[parts[1]] = parts[2]
+            }
+            close(state_file)
         }
-        close(state_file)
-        while ((getline line < inst_file) > 0) installed[line] = 1
-        close(inst_file)
-        while ((getline line < upgr_file) > 0) upgradeable[line] = 1
-        close(upgr_file)
+        if (inst_file != "") {
+            while ((getline line < inst_file) > 0) installed[line] = 1
+            close(inst_file)
+        }
+        if (upgr_file != "") {
+            while ((getline line < upgr_file) > 0) upgradeable[line] = 1
+            close(upgr_file)
+        }
 
         GREEN="\033[32m"; RED="\033[31m"; YELLOW="\033[33m"; BLUE="\033[34m"
         CYAN="\033[36m"; BOLD="\033[1m"; RESET="\033[0m"
@@ -284,7 +290,7 @@ EOF
     tput civis 2>/dev/null || true
     
     # Initial Generation
-    bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" | \
+    bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" "$INST_FILE" "$UPGR_FILE" | \
     fzf --ansi --no-multi \
         --prompt="pget: " \
         --delimiter=$'\t' \
