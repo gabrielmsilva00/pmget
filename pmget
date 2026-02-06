@@ -412,35 +412,32 @@ _toggle_sudo() {
 _internal_state_mod() {
     local sf="$1" pkg="$2" dir="$3" inst_f="$4" upgr_f="$5"
     local s=$(_get_state "$sf" "$pkg")
+    [[ -z "$s" ]] && s=0
     
     # Determine package status
     local is_inst=0 is_upgr=0
     grep -qxF "$pkg" "$inst_f" 2>/dev/null && is_inst=1
     grep -qxF "$pkg" "$upgr_f" 2>/dev/null && is_upgr=1
     
-    local new_s=0
+    local n=0
     if [[ "$dir" == "next" || "$dir" == "toggle_or_select" ]]; then
         if [[ $is_inst -eq 0 ]]; then
-            # NOT installed: cycle none <-> install
-            [[ "$s" == "1" ]] && new_s=0 || new_s=1
+            [[ "$s" == "1" ]] && n=0 || n=1
         elif [[ $is_upgr -eq 1 ]]; then
-            # Installed AND upgradeable: cycle none -> upgrade -> uninstall -> none
-            if [[ "$s" == "3" ]]; then new_s=2; elif [[ "$s" == "2" ]]; then new_s=0; else new_s=3; fi
+            if [[ "$s" == "3" ]]; then n=2; elif [[ "$s" == "2" ]]; then n=0; else n=3; fi
         else
-            # Installed but NOT upgradeable: cycle none <-> uninstall
-            [[ "$s" == "2" ]] && new_s=0 || new_s=2
+            [[ "$s" == "2" ]] && n=0 || n=2
         fi
     elif [[ "$dir" == "prev" ]]; then
         if [[ $is_inst -eq 0 ]]; then
-            [[ "$s" == "1" ]] && new_s=0 || new_s=1
+            [[ "$s" == "1" ]] && n=0 || n=1
         elif [[ $is_upgr -eq 1 ]]; then
-            # cycle none -> uninstall -> upgrade -> none (rev)
-            if [[ "$s" == "2" ]]; then new_s=3; elif [[ "$s" == "3" ]]; then new_s=0; else new_s=2; fi
+            if [[ "$s" == "2" ]]; then n=3; elif [[ "$s" == "3" ]]; then n=0; else n=2; fi
         else
-            [[ "$s" == "2" ]] && new_s=0 || new_s=2
+            [[ "$s" == "2" ]] && n=0 || n=2
         fi
     fi
-    _set_state "$sf" "$pkg" "$new_s"
+    _set_state "$sf" "$pkg" "$n"
 }
  
 _info() {
