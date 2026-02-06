@@ -213,16 +213,15 @@ EOF
     bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" | \
     fzf --ansi --no-multi \
         --prompt="pget: " \
-        --header="Enter=Exec | Tab=Toggle | ←→=Cycle | s=Sudo" \
+        --header="Enter=Exec | Tab=Sudo | ←→=Select/Cycle" \
         --preview="$cmd_preview" \
         --preview-window="top:40%" \
         --layout=reverse \
         --info=inline \
         --bind "right:execute-silent($cmd_update_next)+reload($cmd_reload)" \
         --bind "left:execute-silent($cmd_update_prev)+reload($cmd_reload)" \
-        --bind "tab:execute-silent($cmd_toggle)+reload($cmd_reload)" \
+        --bind "tab:execute-silent($cmd_sudo_toggle)+reload($cmd_reload)" \
         --bind "alt-enter:print-query" \
-        --bind "s:execute-silent($cmd_sudo_toggle)+reload($cmd_reload)" \
         > /dev/null
     
     tput cnorm 2>/dev/null || true
