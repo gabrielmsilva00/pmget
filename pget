@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pget - Package Getter (https://github.com/gabrielmsilva00/pget)
 
-VERSION="1.0.5"
+VERSION="1.0.6"
 
 # Colors
 BOLD=$(tput bold 2>/dev/null) || BOLD=""
@@ -217,6 +217,22 @@ _internal_state_mod() {
     fi
     _set_state "$sf" "$pkg" "$new_s"
 }
+ 
+_info() {
+    local pm="$1"
+    local pkg="$2"
+    echo -e "\033[1m\033[36mPackage Info:\033[0m\n"
+    case "$pm" in
+        pkg)      pkg show "$pkg" 2>/dev/null ;;
+        nala)     nala show "$pkg" 2>/dev/null ;;
+        apt)      apt show "$pkg" 2>/dev/null ;;
+        dnf)      dnf info "$pkg" 2>/dev/null ;;
+        yum)      yum info "$pkg" 2>/dev/null ;;
+        pacman)   pacman -Si "$pkg" 2>/dev/null || pacman -Qi "$pkg" 2>/dev/null ;;
+        zypper)   zypper info "$pkg" 2>/dev/null ;;
+        apk)      apk info -a "$pkg" 2>/dev/null ;;
+    esac
+}
 
 _internal_gen_list() {
     local pkg_file="$1"
@@ -269,6 +285,7 @@ case "$1" in
     gen-list)     _internal_gen_list "$2" "$3" "$4" "$5" ;;
     update-state) _internal_state_mod "$2" "$3" "$4" ;;
     toggle-sudo)  _toggle_sudo "$2" ;;
+    info)         _info "$DETECTED_PM" "$2" ;;
 esac
 EOF
     
@@ -281,10 +298,7 @@ EOF
     local cmd_toggle="$helper_cmd update-state '$STATE_FILE' {1} toggle_or_select"
     local cmd_reload="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE'"
     
-    local SCRIPT_PATH
-    if [[ "$0" == /* ]]; then SCRIPT_PATH="$0"; else SCRIPT_PATH="$(pwd)/${0#./}"; fi
-    
-    local cmd_preview="[[ -n \"{1}\" ]] && \"$SCRIPT_PATH\" --info \"{1}\""
+    local cmd_preview="[[ -n \"{1}\" ]] && DETECTED_PM='$DETECTED_PM' bash \"$HELPER_SCRIPT\" info \"{1}\""
     local cmd_sudo_toggle="$helper_cmd toggle-sudo '$STATE_FILE'"
 
     # Enter Non-canonical mode to prevent escape sequence leakage (per user insight)
