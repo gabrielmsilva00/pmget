@@ -206,13 +206,15 @@ _internal_gen_list() {
         close(state_file)
         GREEN="\033[32m"; RED="\033[31m"; RESET="\033[0m"; BOLD="\033[1m"; CYAN="\033[36m"
         
-        printf BOLD CYAN "  SUDO: " RESET BOLD "%s\n", (sudo_on ? GREEN "ON" : RED "OFF") RESET
+        # Header line (pinned by fzf --header-lines=1)
+        printf BOLD CYAN "  SUDO: " RESET BOLD "%s   (Tab=Toggle | Space=Select | Enter=Exec)\n", (sudo_on ? GREEN "ON" : RED "OFF") RESET
     }
     {
         s = state[$0]
-        if (s == "1") print GREEN "[+] " RESET $0
-        else if (s == "2") print RED "[-] " RESET $0
-        else print "[ ] " $0
+        # Format: ID \t DISPLAY
+        if (s == "1") printf "%s\t%s\n", $0, GREEN "[+] " RESET $0
+        else if (s == "2") printf "%s\t%s\n", $0, RED "[-] " RESET $0
+        else printf "%s\t%s\n", $0, "[ ] " $0
     }
     ' "$pkg_file"
 }
@@ -225,34 +227,36 @@ esac
 EOF
     
     # Define Commands using bash to execute the helper script
-    # We strip ANSI codes and extract the package name after the '] ' prefix
-    local get_pkg_name="echo '{}' | awk -F'] ' '{print \$2}' | sed 's/\x1b\\[[0-9;]*m//g'"
-    
-    # We use 'bash' explicitly to avoid permission issues if chmod fails or noexec mount
+    # Field 1 is the package ID (always clean), Field 2+ is for display.
     local helper_cmd="bash '$HELPER_SCRIPT'"
     
-    local cmd_update_next="$helper_cmd update-state '$STATE_FILE' \$($get_pkg_name) next"
-    local cmd_update_prev="$helper_cmd update-state '$STATE_FILE' \$($get_pkg_name) prev"
-    local cmd_toggle="$helper_cmd update-state '$STATE_FILE' \$($get_pkg_name) toggle_or_select"
+    local cmd_update_next="$helper_cmd update-state '$STATE_FILE' {1} next"
+    local cmd_update_prev="$helper_cmd update-state '$STATE_FILE' {1} prev"
+    local cmd_toggle="$helper_cmd update-state '$STATE_FILE' {1} toggle_or_select"
     local cmd_reload="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE'"
     
-    # For preview we might still need a wrapped call to pget --info, or we can inline it if simple.
-    # Re-calling pget is fine for info as it's a read-only op.
-    local cmd_preview="pkg=\$($get_pkg_name); $0 --info \$pkg"
+    local cmd_preview="[[ -n \"{1}\" ]] && $0 --info \"{1}\""
     local cmd_sudo_toggle="$helper_cmd toggle-sudo '$STATE_FILE'"
 
+    # Enter Non-canonical mode to prevent escape sequence leakage (per user insight)
+    if [[ -t 0 ]]; then
+        st_orig=$(stty -g)
+        stty -icanon -echo
+    fi
     tput civis 2>/dev/null || true
     
     # Initial Generation
     bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" | \
     fzf --ansi --no-multi \
         --prompt="pget: " \
-        --header="Space/←→:Select/Cycle | Tab:Sudo | Enter:Exec" \
+        --delimiter=$'\t' \
+        --with-nth=2.. \
         --header-lines=1 \
         --preview="$cmd_preview" \
         --preview-window="top:40%" \
         --layout=reverse \
         --info=inline \
+        --no-bold \
         --bind "right:execute-silent($cmd_update_next)+reload($cmd_reload)" \
         --bind "left:execute-silent($cmd_update_prev)+reload($cmd_reload)" \
         --bind "space:execute-silent($cmd_toggle)+reload($cmd_reload)" \
@@ -260,6 +264,8 @@ EOF
         --bind "alt-enter:print-query" \
         > /dev/null
     
+    # Reset terminal
+    [[ -n "${st_orig:-}" ]] && stty "$st_orig" 2>/dev/null || true
     tput cnorm 2>/dev/null || true
     
     # Post-Loop Execution Logic
