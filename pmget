@@ -660,10 +660,17 @@ EOF
     # TUI Loop with confirmation flows
     # TUI Loop with confirmation flows
     local fzf_exit_code=0
+    
+    # Termux/Android: Disable mouse to allow tapping to open keyboard
+    local fzf_mouse_opt=""
+    if [[ "$(uname -o 2>/dev/null)" == "Android" ]]; then
+        fzf_mouse_opt="--no-mouse"
+    fi
+
     while true; do
         # Initial Generation
         bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" "$INST_FILE" "$UPGR_FILE" "$SHOW_MODE" | \
-        fzf --ansi --no-multi \
+        fzf --ansi --no-multi $fzf_mouse_opt \
             --prompt="${BLUE}pmget> ${RESET}" \
             --delimiter=$'\t' \
             --with-nth=2,3 \
