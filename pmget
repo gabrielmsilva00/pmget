@@ -732,7 +732,7 @@ EOF
         fzf_opts+=(--bind "load:transform-prompt(bash '$HELPER_SCRIPT' get-prompt '$VER_FILE')")
         fzf_opts+=(--bind "focus:transform-prompt(bash '$HELPER_SCRIPT' get-prompt '$VER_FILE')")
     else
-        fzf_opts+=(--prompt "${BLUE}pmget v${VERSION}> ${RESET}")
+        fzf_opts+=(--prompt "v${VERSION} ${BLUE}pmget> ${RESET}")
     fi
 
     while true; do
@@ -743,15 +743,16 @@ EOF
         fzf_exit_code=$?
         
         # Reset terminal temporarily for prompts
-        # [[ -n "${st_orig:-}" ]] && stty "$st_orig" 2>/dev/null || true
+        [[ -n "${st_orig:-}" ]] && stty "$st_orig" 2>/dev/null || true
         tput cnorm 2>/dev/null || true
         
         # Handle Esc (exit code 130 or 1)
         if [[ $fzf_exit_code -ne 0 ]]; then
             # Calculate pending changes from state file
-            local n_inst=$(tr -d '\r' < "$STATE_FILE" 2>/dev/null | grep -c '=1$')
-            local n_rem=$(tr -d '\r' < "$STATE_FILE" 2>/dev/null | grep -c '=2$')
-            local n_upgr=$(tr -d '\r' < "$STATE_FILE" 2>/dev/null | grep -c '=3$')
+            local n_inst n_rem n_upgr
+            n_inst=$(grep -c '=1$' "$STATE_FILE" 2>/dev/null || echo 0)
+            n_rem=$(grep -c '=2$' "$STATE_FILE" 2>/dev/null || echo 0)
+            n_upgr=$(grep -c '=3$' "$STATE_FILE" 2>/dev/null || echo 0)
 
             # If no changes pending, exit immediately
             if [[ "$n_inst" -eq 0 && "$n_rem" -eq 0 && "$n_upgr" -eq 0 ]]; then
@@ -786,15 +787,15 @@ EOF
         fi
         
         # Handle Enter - show confirmation
-        if grep -q "__SUDO__=true" "$STATE_FILE"; then
+        if [[ -f "$STATE_FILE" ]] && grep -q "__SUDO__=true" "$STATE_FILE"; then
             USE_SUDO=true
         else
             USE_SUDO=false
         fi
 
-        local inst=$(tr -d '\r' < "$STATE_FILE" 2>/dev/null | grep '=1$' | cut -d= -f1 | tr '\n' ' ')
-        local rem=$(tr -d '\r' < "$STATE_FILE" 2>/dev/null | grep '=2$' | cut -d= -f1 | tr '\n' ' ')
-        local upgr=$(tr -d '\r' < "$STATE_FILE" 2>/dev/null | grep '=3$' | cut -d= -f1 | tr '\n' ' ')
+        local inst=$(grep '=1$' "$STATE_FILE" 2>/dev/null | cut -d= -f1 | tr '\n' ' ')
+        local rem=$(grep '=2$' "$STATE_FILE" 2>/dev/null | cut -d= -f1 | tr '\n' ' ')
+        local upgr=$(grep '=3$' "$STATE_FILE" 2>/dev/null | cut -d= -f1 | tr '\n' ' ')
          
         if [[ -z "$inst" && -z "$rem" && -z "$upgr" ]]; then
              echo
@@ -814,7 +815,7 @@ EOF
         
         # Read single keypress
         local key
-        read -rsn1 key
+        read -rsn1 key < /dev/tty
         
         if [[ -z "$key" ]]; then
             # Enter pressed - proceed with execution
