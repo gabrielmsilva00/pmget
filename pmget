@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pmget - Package Manager Getter (https://github.com/gabrielmsilva00/pmget)
 
-VERSION="1.2.8"
+VERSION="1.2.9"
 REPO="gabrielmsilva00/pmget"
 MAINTAINERS=("Gabriel Silva (@gabrielmsilva00)")
 
@@ -760,7 +760,7 @@ EOF
         --header-lines=4
         --tiebreak=begin,index
         --preview="$cmd_preview"
-        --preview-window="top:40%:hidden"
+        --preview-window="top:30%"
         --layout=reverse
         --info=inline
         --no-bold
