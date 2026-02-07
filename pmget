@@ -262,11 +262,11 @@ fetch_packages() {
 
 fetch_installed() {
     case "$DETECTED_PM" in
-        apt)      dpkg-query -W -f='${Package}\t${Version}\n' 2>/dev/null ;;
-        dnf)      rpm -qa --queryformat '%{NAME}\t%{VERSION}-%{RELEASE}\n' 2>/dev/null ;;
-        pacman)   pacman -Q 2>/dev/null | sed 's/ /\t/' ;;
-        zypper)   rpm -qa --queryformat '%{NAME}\t%{VERSION}-%{RELEASE}\n' 2>/dev/null ;;
-        apk)      apk info -v 2>/dev/null | sed -E 's/(.*)-([0-9].*)/\1\t\2/' ;;
+        apt)      dpkg-query -W -f='${Package}\t\t\t${Version}\n' 2>/dev/null ;;
+        dnf)      rpm -qa --queryformat '%{NAME}\t\t\t%{VERSION}-%{RELEASE}\n' 2>/dev/null ;;
+        pacman)   pacman -Q 2>/dev/null | sed 's/ /\t\t\t/' ;;
+        zypper)   rpm -qa --queryformat '%{NAME}\t\t\t%{VERSION}-%{RELEASE}\n' 2>/dev/null ;;
+        apk)      apk info -v 2>/dev/null | sed -E 's/(.*)-([0-9].*)/\1\t\t\t\2/' ;;
     esac
 }
 
@@ -418,10 +418,8 @@ _toggle_sudo() {
     local sf="$1"
     if grep -q "__SUDO__=true" "$sf"; then
         grep -v "__SUDO__=" "$sf" > "$sf.tmp" && mv "$sf.tmp" "$sf"
-        echo "false"
     else
         echo "__SUDO__=true" >> "$sf"
-        echo "true"
     fi
 }
 
