@@ -9,7 +9,9 @@ RESET=$(tput sgr0 2>/dev/null) || RESET=""
 RED=$(tput setaf 1 2>/dev/null) || RED=""
 GREEN=$(tput setaf 2 2>/dev/null) || GREEN=""
 YELLOW=$(tput setaf 3 2>/dev/null) || YELLOW=""
+BLUE=$(tput setaf 4 2>/dev/null) || BLUE=""
 CYAN=$(tput setaf 6 2>/dev/null) || CYAN=""
+WHITE=$(tput setaf 7 2>/dev/null) || WHITE=""
 
 # ============================================================================
 # SELF-INSTALLATION MODE
@@ -53,8 +55,8 @@ self_install() {
         root)  install_dir="/root/.local/bin"; need_sudo=true ;;
     esac
 
-    echo "${BOLD}${CYAN}pmget installer${RESET}"
-    echo "${CYAN}Target:${RESET} $install_dir"
+    echo "${BOLD}${BLUE}pmget installer${RESET}"
+    echo "${BLUE}Target:${RESET} $install_dir"
     echo
 
     # Check for existing pmget installation
@@ -79,9 +81,9 @@ self_install() {
                     exit 0
                 fi
                 echo
-                echo "${CYAN}→${RESET} Reinstalling v${VERSION}..."
+                echo "${WHITE}→${RESET} Reinstalling v${VERSION}..."
             else
-                echo "${CYAN}→${RESET} Updating pmget v${current_ver} to v${VERSION}"
+                echo "${WHITE}→${RESET} Updating pmget v${current_ver} to v${VERSION}"
             fi
         else
             echo "${YELLOW}⚠${RESET} Different 'pmget' found: $existing_pmget"
@@ -131,7 +133,7 @@ self_install() {
 
     if [[ "$need_sudo" == true ]]; then
         # Try with sudo first
-        echo "${CYAN}→${RESET} Attempting install with sudo..."
+        echo "${WHITE}→${RESET} Attempting install with sudo..."
         if sudo mkdir -p "$install_dir" 2>/dev/null && \
            sudo cp "$tmpfile" "$install_dir/pmget" 2>/dev/null && \
            sudo chmod +x "$install_dir/pmget" 2>/dev/null; then
@@ -291,7 +293,7 @@ show_info() {
 
 show_help() {
     cat <<EOF
-${BOLD}${CYAN}pmget${RESET} v${VERSION} - Package Manager Getter
+${BOLD}${BLUE}pmget${RESET} v${VERSION} - Package Manager Getter
 https://github.com/gabrielmsilva00/pmget
 
 ${BOLD}Usage:${RESET}
@@ -342,7 +344,7 @@ parse_args() {
 }
 
 run_cli() {
-    echo "${BOLD}${CYAN}pmget${RESET} (${DETECTED_PM})$([[ "$USE_SUDO" == true ]] && echo " [sudo]")"
+    echo "${BOLD}${BLUE}pmget${RESET} (${DETECTED_PM})$([[ "$USE_SUDO" == true ]] && echo " [sudo]")"
     local rc=0
     [[ ${#REMOVE_PKGS[@]} -gt 0 ]] && { echo "${RED}Removing:${RESET} ${REMOVE_PKGS[*]}"; run_pm remove "${REMOVE_PKGS[@]}" || rc=1; echo; }
     [[ ${#INSTALL_PKGS[@]} -gt 0 ]] && { echo "${GREEN}Installing:${RESET} ${INSTALL_PKGS[*]}"; run_pm install "${INSTALL_PKGS[@]}" || rc=1; }
@@ -355,7 +357,7 @@ run_cli() {
 # ----------------------------------------------------
 
 run_tui() {
-    echo -n "${CYAN}Loading packages...${RESET} "
+    echo -n "${WHITE}Loading packages...${RESET} "
     
     # Create a temp dir for all artifacts
     TMP_DIR=$(mktemp -d)
@@ -458,7 +460,7 @@ _info() {
     local pm_name="$1"
     local pm_path="$2"
     local pkg="$3"
-    echo -e "\033[1m\033[36mPackage Information:\033[0m\n"
+    echo -e "\033[1m\033[34mPackage Information:\033[0m\n"
     
     case "$pm_name" in
         apt)    apt-cache show "$pkg" 2>/dev/null | grep -Ev '^(Section:|Priority:|Installed|Essential:|SHA1:|SHA256:|SHA512:|MD5sum:|Filename:|Size:|Task:)' ;;
@@ -495,7 +497,7 @@ _internal_gen_list() {
         }
 
         GREEN="\033[32m"; RED="\033[31m"; YELLOW="\033[33m"; BLUE="\033[34m"
-        CYAN="\033[36m"; BOLD="\033[1m"; RESET="\033[0m"
+        CYAN="\033[36m"; GREY="\033[90m"; WHITE="\033[97m"; BOLD="\033[1m"; RESET="\033[0m"
         
         # Header and Legends (first field is dummy for --with-nth=2)
         n_inst=0; n_rem=0; n_upgr=0
@@ -505,10 +507,10 @@ _internal_gen_list() {
             else if (state[p] == "3") n_upgr++
         }
         
-        printf "_\t%s%s  SUDO: %s%s%s\n", BOLD, CYAN, RESET, BOLD, (sudo_on ? GREEN "ON" : RED "OFF")
-        printf "_\t%s%s  SELECTED: %sInstall: %d | Remove: %d | Upgrade: %d%s\n", BOLD, CYAN, RESET, n_inst, n_rem, n_upgr, RESET
-        printf "_\t%s%s  KEYS: %s(Tab: Sudo | ←/→/Space: Cycle | Enter: Apply | Esc: Exit)\n", BOLD, CYAN, RESET
-        printf "_\t%s%s  SYMBOLS: %s[ ] None  [✓] Inst  [^] Upgr  [+] Add  [-] Rem  [↑] Upgr\n", BOLD, CYAN, RESET
+        printf "_\t%s%s  SUDO: %s%s%s%s\n", BOLD, GREY, RESET, BOLD, (sudo_on ? GREEN "ON" : RED "OFF"), RESET
+        printf "_\t%s%s  SELECTED: %s%sInstall: %d | Remove: %d | Upgrade: %d%s\n", BOLD, GREY, RESET, WHITE, n_inst, n_rem, n_upgr, RESET
+        printf "_\t%s%s  KEYS: %s%s(Tab: Sudo | ←/→/Space: Cycle | Enter: Apply | Esc: Exit)%s\n", BOLD, GREY, RESET, WHITE, RESET
+        printf "_\t%s%s  SYMBOLS: %s%s[ ] None  [✓] Inst  [^] Upgr  [+] Add  [-] Rem  [↑] Upgr%s\n", BOLD, GREY, RESET, WHITE, RESET
     }
     {
         split($0, arr, "\t")
@@ -559,13 +561,13 @@ EOF
         # Initial Generation
         bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" "$INST_FILE" "$UPGR_FILE" | \
         fzf --ansi --no-multi \
-            --prompt="pmget> " \
+            --prompt="${BLUE}pmget> ${RESET}" \
             --delimiter=$'\t' \
             --with-nth=2 \
             --header-lines=4 \
-            --tiebreak=length,begin,index \
+            --tiebreak=begin,index \
             --preview="$cmd_preview" \
-            --preview-window="top:40%" \
+            --preview-window="top:30%" \
             --layout=reverse \
             --info=inline \
             --no-bold \
@@ -628,10 +630,10 @@ EOF
 
         # Show summary and ask for confirmation
         echo
-        echo "${BOLD}${CYAN}Pending Changes:${RESET}"
+        echo "${BOLD}${WHITE}Pending Changes:${RESET}"
         [[ -n "$inst" ]] && echo "  ${GREEN}Install:${RESET} $inst"
         [[ -n "$rem" ]] && echo "  ${RED}Remove:${RESET} $rem"
-        [[ -n "$upgr" ]] && echo "  ${CYAN}Upgrade:${RESET} $upgr"
+        [[ -n "$upgr" ]] && echo "  ${BLUE}Upgrade:${RESET} $upgr"
         [[ "$USE_SUDO" == true ]] && echo "  ${YELLOW}Sudo:${RESET} enabled"
         echo
         echo -n "Press ${BOLD}Enter${RESET} to proceed, ${BOLD}Esc${RESET} to go back: "
@@ -669,7 +671,7 @@ EOF
     # Upgrades are treated as installs (package managers handle upgrades via install)
     [[ -n "$upgr" ]] && cmd+=" -i $upgr"
      
-    echo "${CYAN}> Executing...${RESET}"
+    echo "${WHITE}> Executing...${RESET}"
     eval "$cmd"
     exit 0
 }
