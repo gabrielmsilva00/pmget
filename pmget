@@ -252,31 +252,31 @@ run_pm() {
 
 fetch_packages() {
     case "$DETECTED_PM" in
-        apt)      apt-cache search . 2>/dev/null | awk -F' - ' '{print $1 "\t\t\t" $0}' | sort -u ;;
-        dnf)      dnf repoquery --qf '%{name}\t\t\t%{name} - %{summary}' 2>/dev/null ;;
-        pacman)   pacman -Slq 2>/dev/null | awk '{print $1 "\t\t\t" $1}' ;;
-        zypper)   zypper packages 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3);print $3 "\t\t\t" $3}' ;;
-        apk)      apk search -v 2>/dev/null | awk '{print $1 "\t\t\t" $0}' | sed 's/ - / /' ;;
+        apt)      apt-cache search . 2>/dev/null | awk -F' - ' '{print $1 "\t\t" $0}' | sort -u ;;
+        dnf)      dnf repoquery --qf '%{name}\t\t%{name} - %{summary}' 2>/dev/null ;;
+        pacman)   pacman -Slq 2>/dev/null | awk '{print $1 "\t\t" $1}' ;;
+        zypper)   zypper packages 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3);print $3 "\t\t" $3}' ;;
+        apk)      apk search -v 2>/dev/null | awk '{print $1 "\t\t" $0}' | sed 's/ - / /' ;;
     esac
 }
 
 fetch_installed() {
     case "$DETECTED_PM" in
-        apt)      dpkg-query -W -f='${Package}\t\t\t${Version}\n' 2>/dev/null ;;
-        dnf)      rpm -qa --queryformat '%{NAME}\t\t\t%{VERSION}-%{RELEASE}\n' 2>/dev/null ;;
-        pacman)   pacman -Q 2>/dev/null | sed 's/ /\t\t\t/' ;;
-        zypper)   rpm -qa --queryformat '%{NAME}\t\t\t%{VERSION}-%{RELEASE}\n' 2>/dev/null ;;
-        apk)      apk info -v 2>/dev/null | sed -E 's/(.*)-([0-9].*)/\1\t\t\t\2/' ;;
+        apt)      dpkg-query -W -f='${Package}\t\t${Version}\n' 2>/dev/null ;;
+        dnf)      rpm -qa --queryformat '%{NAME}\t\t%{VERSION}-%{RELEASE}\n' 2>/dev/null ;;
+        pacman)   pacman -Q 2>/dev/null | sed 's/ /\t\t/' ;;
+        zypper)   rpm -qa --queryformat '%{NAME}\t\t%{VERSION}-%{RELEASE}\n' 2>/dev/null ;;
+        apk)      apk info -v 2>/dev/null | sed -E 's/(.*)-([0-9].*)/\1\t\t\2/' ;;
     esac
 }
 
 fetch_upgradeable() {
     case "$DETECTED_PM" in
-        apt)      apt list --upgradeable 2>/dev/null | awk -F/ 'NR>1 && /-/{split($0,a," "); print $1 "\t\t\t" a[2]}' ;;
-        dnf)      dnf list updates -q 2>/dev/null | awk 'NR>1 {match($1, /^([^.]+)/, n); print n[1] "\t\t\t" $2}' ;;
-        pacman)   pacman -Qu 2>/dev/null | awk '{print $1 "\t\t\t" $4}' ;;
-        zypper)   zypper list-updates 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3); gsub(/ /,"",$5); print $3 "\t\t\t" $5}' ;;
-        apk)      apk version -u 2>/dev/null | sed -nE 's/^(.*)-([0-9].*) < (.*)/\1\t\t\t\3/p' ;;
+        apt)      apt list --upgradeable 2>/dev/null | awk -F/ 'NR>1 && /-/{split($0,a," "); print $1 "\t\t" a[2]}' ;;
+        dnf)      dnf list updates -q 2>/dev/null | awk 'NR>1 {match($1, /^([^.]+)/, n); print n[1] "\t\t" $2}' ;;
+        pacman)   pacman -Qu 2>/dev/null | awk '{print $1 "\t\t" $4}' ;;
+        zypper)   zypper list-updates 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3); gsub(/ /,"",$5); print $3 "\t\t" $5}' ;;
+        apk)      apk version -u 2>/dev/null | sed -nE 's/^(.*)-([0-9].*) < (.*)/\1\t\t\3/p' ;;
     esac
 }
 
