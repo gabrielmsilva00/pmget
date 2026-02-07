@@ -376,7 +376,7 @@ run_tui() {
     STATE_FILE="$TMP_DIR/state"
     INST_FILE="$TMP_DIR/installed"
     UPGR_FILE="$TMP_DIR/upgradeable"
-    MODE_FILE="$TMP_DIR/mode"
+    UPGR_FILE="$TMP_DIR/upgradeable"
     HELPER_SCRIPT="$TMP_DIR/helper.sh"
     
     # Cleanup on exit
@@ -389,7 +389,6 @@ run_tui() {
     fi
     
     touch "$STATE_FILE" "$INST_FILE" "$UPGR_FILE"
-    echo "ALL" > "$MODE_FILE"
     
     fetch_packages > "$PKG_FILE"
     fetch_installed > "$INST_FILE"
