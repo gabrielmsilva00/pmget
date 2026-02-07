@@ -417,7 +417,8 @@ _set_state() {
 _toggle_sudo() {
     local sf="$1"
     if grep -q "__SUDO__=true" "$sf"; then
-        grep -v "__SUDO__=" "$sf" > "$sf.tmp" && mv "$sf.tmp" "$sf"
+        grep -v "__SUDO__=" "$sf" > "$sf.tmp"
+        mv "$sf.tmp" "$sf"
     else
         echo "__SUDO__=true" >> "$sf"
     fi
