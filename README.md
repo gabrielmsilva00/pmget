@@ -2,13 +2,26 @@
 
 > Package Manager Getter — fuzzy search and install packages.
 
+## Test
+
+You can test the application right now by running the following command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash
+```
+
+This won't install the application, it will just run it.
+
 ## Install
+
+You can also install this with a simple single-line command:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash -s -- --self-install
 ```
 
-###### This installs `pmget` to `~/.local/bin` by default. For other locations:
+###### This installs `pmget` to `~/.local/bin` by default.
+###### For other locations:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash -s -- --self-install --usr     # /usr/local/bin (requires sudo)
@@ -18,7 +31,8 @@ curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | 
 curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash -s -- --self-install --root    # /root/.local/bin (requires sudo)
 ```
 
-**Requires:** `fzf` and one of: `apt`, `dnf`, `pacman`, `zypper`, `apk`
+**Requires:** `fzf` and one of: `apt`, `dnf`, `pacman`, `zypper`, `apk`.
+Dependencies can be met at install time.
 
 To update, re-run the install command or use `pmget --self-install`.
 
@@ -72,6 +86,7 @@ pmget --self-install     # Update pmget itself
 ```bash
 rm $(which pmget)
 ```
+###### 
 
 ## License
 
