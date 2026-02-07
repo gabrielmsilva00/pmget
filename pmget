@@ -252,11 +252,11 @@ run_pm() {
 
 fetch_packages() {
     case "$DETECTED_PM" in
-        apt)      apt-cache search . 2>/dev/null | awk -F' - ' '{print $1 "\t" $0}' | sort -u ;;
-        dnf)      dnf repoquery --qf '%{name}\t%{name} - %{summary}' 2>/dev/null ;;
-        pacman)   pacman -Slq 2>/dev/null | awk '{print $1 "\t" $1}' ;;
-        zypper)   zypper packages 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3);print $3 "\t" $3}' ;;
-        apk)      apk search -v 2>/dev/null | awk '{print $1 "\t" $0}' | sed 's/ - / /' ;;
+        apt)      apt-cache search . 2>/dev/null | awk -F' - ' '{print $1 "\t\t\t" $0}' | sort -u ;;
+        dnf)      dnf repoquery --qf '%{name}\t\t\t%{name} - %{summary}' 2>/dev/null ;;
+        pacman)   pacman -Slq 2>/dev/null | awk '{print $1 "\t\t\t" $1}' ;;
+        zypper)   zypper packages 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3);print $3 "\t\t\t" $3}' ;;
+        apk)      apk search -v 2>/dev/null | awk '{print $1 "\t\t\t" $0}' | sed 's/ - / /' ;;
     esac
 }
 
@@ -272,11 +272,11 @@ fetch_installed() {
 
 fetch_upgradeable() {
     case "$DETECTED_PM" in
-        apt)      apt list --upgradeable 2>/dev/null | awk -F/ 'NR>1 && /-/{split($0,a," "); print $1 "\t" a[2]}' ;;
-        dnf)      dnf list updates -q 2>/dev/null | awk 'NR>1 {match($1, /^([^.]+)/, n); print n[1] "\t" $2}' ;;
-        pacman)   pacman -Qu 2>/dev/null | awk '{print $1 "\t" $4}' ;;
-        zypper)   zypper list-updates 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3); gsub(/ /,"",$5); print $3 "\t" $5}' ;;
-        apk)      apk version -u 2>/dev/null | sed -nE 's/^(.*)-([0-9].*) < (.*)/\1\t\3/p' ;;
+        apt)      apt list --upgradeable 2>/dev/null | awk -F/ 'NR>1 && /-/{split($0,a," "); print $1 "\t\t\t" a[2]}' ;;
+        dnf)      dnf list updates -q 2>/dev/null | awk 'NR>1 {match($1, /^([^.]+)/, n); print n[1] "\t\t\t" $2}' ;;
+        pacman)   pacman -Qu 2>/dev/null | awk '{print $1 "\t\t\t" $4}' ;;
+        zypper)   zypper list-updates 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3); gsub(/ /,"",$5); print $3 "\t\t\t" $5}' ;;
+        apk)      apk version -u 2>/dev/null | sed -nE 's/^(.*)-([0-9].*) < (.*)/\1\t\t\t\3/p' ;;
     esac
 }
 
@@ -302,7 +302,7 @@ ${BOLD}Usage:${RESET}
   pmget --self-install      Install/update pmget itself
 
 ${BOLD}Install pmget (one-liner):${RESET}
-  curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash
+  curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash -s -- --self-install
 
 ${BOLD}Options:${RESET}
   -c, --cli                 CLI mode (non-interactive)
@@ -592,7 +592,7 @@ EOF
         fzf_exit_code=$?
         
         # Reset terminal temporarily for prompts
-        [[ -n "${st_orig:-}" ]] && stty "$st_orig" 2>/dev/null || true
+        # [[ -n "${st_orig:-}" ]] && stty "$st_orig" 2>/dev/null || true
         tput cnorm 2>/dev/null || true
         
         # Handle Esc (exit code 130 or 1)
