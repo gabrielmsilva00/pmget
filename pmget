@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pmget - Package Manager Getter (https://github.com/gabrielmsilva00/pmget)
 
-VERSION="1.1.16"
+VERSION="1.2.0"
 
 # Colors
 BOLD=$(tput bold 2>/dev/null) || BOLD=""
@@ -563,31 +563,31 @@ _internal_gen_list() {
         if (filter_mode == "INSTALLED" && !is_inst) next
         if (filter_mode == "UPGRADEABLE" && !is_upgr) next
         
-        sym = "[ ]"; col = RESET; rst = RESET; ver_info = ""
-        
+        # Calculate Version Info independent of selection state
+        ver_info = ""
+        if (is_upgr) {
+            ver_info = YELLOW installed[pkg] RESET " → " GREEN upgradeable[pkg] RESET
+        } else if (is_inst) {
+            ver_info = WHITE installed[pkg] RESET
+        } else {
+            ver_info = GREY avail_ver RESET
+        }
+
+        # Determine Symbol and Color
+        sym = "[ ]"; col = RESET
         if (s == "1") { sym = "[+]"; col = BOLD GREEN }
         else if (s == "2") { sym = "[-]"; col = BOLD RED }
         else if (s == "3") { sym = "[↑]"; col = BOLD CYAN }
-        else if (is_upgr) { 
-            sym = "[^]"; col = BOLD YELLOW 
-            ver_info = YELLOW installed[pkg] RESET " → " GREEN upgradeable[pkg] RESET
-        }
-        else if (is_inst) { 
-            sym = "[✓]"; col = BOLD BLUE 
-            ver_info = WHITE installed[pkg] RESET
-        }
-        else {
-             # Not Installed
-             ver_info = GREY avail_ver RESET
-        }
+        else if (is_upgr) { sym = "[^]"; col = BOLD YELLOW }
+        else if (is_inst) { sym = "[✓]"; col = BOLD BLUE }
         
         # Padding to prevent merge
         if (ver_info == "" || ver_info == (GREY RESET)) ver_info = " "
 
         # Dynamic Space Calculation for Visual Alignment using SPACES
-        # Target column: 50 chars
+        # Target column: 42 chars (Reduced from 50)
         len = length(pkg) + 4
-        pad = 50 - len
+        pad = 36 - len
         if (pad < 1) pad = 1
         padding = sprintf("%*s", pad, "")
 
