@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pmget - Package Manager Getter (https://github.com/gabrielmsilva00/pmget)
 
-VERSION="1.1.13"
+VERSION="1.1.14"
 
 # Colors
 BOLD=$(tput bold 2>/dev/null) || BOLD=""
@@ -253,7 +253,18 @@ run_pm() {
 
 fetch_packages() {
     case "$DETECTED_PM" in
-        apt)      apt-cache search . 2>/dev/null | awk -F' - ' '{print $1 "\t\t\t\t\t\t" $0}' | sort -u ;;
+        apt)      apt-cache search . --full 2>/dev/null | awk -v RS='' -v FS='\n' '{
+                      n=""; v=""; d=""
+                      for(i=1;i<=NF;i++) {
+                          if($i~/^Package: /) n=substr($i,10)
+                          else if($i~/^Version: /) v=substr($i,10)
+                          else if($i~/^Description: /) d=substr($i,14)
+                      }
+                      if(n!="") {
+                          if(v=="") v=" "
+                          print n "\t\t\t" v "\t\t\t" d
+                      }
+                  }' | sort -u -k1,1 ;;
         dnf)      dnf repoquery --qf '%{name}\t\t\t%{version}-%{release}\t\t\t%{summary}' 2>/dev/null ;;
         pacman)   pacman -Sl 2>/dev/null | awk '{print $2 "\t\t\t" $3 "\t\t\t" $2}' ;;
         zypper)   zypper packages 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3); gsub(/ /,"",$4); print $3 "\t\t\t" $4 "\t\t\t" $3}' ;;
@@ -544,6 +555,7 @@ _internal_gen_list() {
         # If fetch_packages outputs 3 columns, arr[3] is description.
         display = arr[3]
         if (display == "") display = pkg
+        if (avail_ver == " ") avail_ver = ""
         
         s = state[pkg]; is_inst = (pkg in installed); is_upgr = (pkg in upgradeable)
         
