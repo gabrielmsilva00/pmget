@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pmget - Package Manager Getter (https://github.com/gabrielmsilva00/pmget)
 
-VERSION="1.2.6"
+VERSION="1.2.7"
 REPO="gabrielmsilva00/pmget"
 MAINTAINERS=("Gabriel Silva (@gabrielmsilva00)")
 
@@ -606,7 +606,7 @@ _internal_gen_list() {
         
         printf "_\t%s%s  SUDO     %s%s%s\n", BOLD, YELLOW, (sudo_on ? GREEN "● ON" : RED "○ OFF"), RESET, BOLD
         printf "_\t%s%s  SELECTED %s[+] %s%d  %s[-] %s%d  %s[↑] %s%d%s\n", BOLD, BLUE, GREEN, WHITE, n_inst, RED, WHITE, n_rem, BLUE, WHITE, n_upgr, RESET
-        printf "_\t%s%s  KEYS     %sTab: Sudo  ←/→/Space: Cycle  Enter: Apply  Esc: Exit%s\n", BOLD, CYAN, WHITE, RESET
+        printf "_\t%s%s  KEYS     %sTab: Sudo  ←/→/Space: Cycle  Enter: Apply  ^V: Info%s\n", BOLD, CYAN, WHITE, RESET
         printf "_\t%s%s  SYMBOLS  %s[ ] None  [✓] Inst  [+] Add  [-] Rem  [↑] Upgr%s\n", BOLD, MAGENTA, WHITE, RESET
     }
     {
@@ -725,7 +725,17 @@ EOF
     local cmd_prev="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '{1}' prev"
     local cmd_toggle="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '{1}' toggle_or_select"
     local cmd_sudo="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '' toggle-sudo"
-    local cmd_preview="$helper_cmd info '{1}'"
+    
+    # Optimize Preview: Avoid helper script overhead
+    local cmd_preview=""
+    local title_cmd="echo -e \"\033[1m\033[34mPackage Information:\033[0m\n\""
+    case "$DETECTED_PM" in
+        apt)    cmd_preview="$title_cmd; apt-cache show {1} 2>/dev/null | grep -Ev '^(Section:|Priority:|Installed|Essential:|SHA1:|SHA256:|SHA512:|MD5sum:|Description-md5:|Filename:|Size:|Task:)'" ;;
+        dnf)    cmd_preview="$title_cmd; dnf info {1} 2>/dev/null" ;;
+        pacman) cmd_preview="$title_cmd; $PM_PATH -Si {1} 2>/dev/null || $PM_PATH -Qi {1} 2>/dev/null" ;;
+        zypper) cmd_preview="$title_cmd; zypper info {1} 2>/dev/null" ;;
+        apk)    cmd_preview="$title_cmd; apk info -a {1} 2>/dev/null" ;;
+    esac
 
     # Enter Non-canonical mode to prevent escape sequence leakage (per user insight)
     if [[ -t 0 ]]; then
@@ -750,7 +760,7 @@ EOF
         --header-lines=4
         --tiebreak=begin,index
         --preview="$cmd_preview"
-        --preview-window="top:30%"
+        --preview-window="top:40%:hidden"
         --layout=reverse
         --info=inline
         --no-bold
@@ -758,6 +768,7 @@ EOF
         --bind "left:reload($cmd_prev)"
         --bind "space:reload($cmd_toggle)"
         --bind "tab:reload($cmd_sudo)"
+        --bind "ctrl-v:toggle-preview"
         --bind "enter:accept"
     )
 
