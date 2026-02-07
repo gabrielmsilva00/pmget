@@ -665,20 +665,20 @@ case "$1" in
         
         if [[ -n "$r_ver" && "$r_ver" != "$VERSION" ]]; then
             IFS=. read -r l_maj l_min l_pat <<< "$VERSION"
-            IFS=. read -r r_maj r_min r_pat <<< $r_ver"
+            IFS=. read -r r_maj r_min r_pat <<< "$r_ver"
            
-            if (( r_maj > l_maj )) then
+            if (( r_maj > l_maj )); then
                 col="\033[90m" # Grey (Major)
-            elif (( r_min > l_min )) then
+            elif (( r_min > l_min )); then
                 col="\033[31m" # Red (Minor)
-             lif (( r_pat > l_pat )); then
+            elif (( r_pat > l_pat )); then
                 col="\033[33m" # Yellow (Patch)
             fi
         fi
         
         echo -e "\033[34mpmget ${col}v${VERSION}\033[34m> \033[0m"
         ;;
-e   info)         _info "$DETECTED_PM" "$PM_PATH" "$2" ;;
+    info)         _info "$DETECTED_PM" "$PM_PATH" "$2" ;;
 esac
 EOF
     
@@ -705,21 +705,21 @@ EOF
     
     # Termux/Android: Disable mouse to allow tapping to open keyboard
     local fzf_mouse_opt=""
-    if [[ "_mouse$opt="--no-mouse"
+    if [[ "$(uname -o 2>/dev/null)" == "Android" ]]; then
+        fzf_mouse_opt="--no-mouse"
     fi
     
-    # Check if fzf supports transfor(-prumpt (v0.53+)
-    # We nam a simple check; if invalid, we fallback to static prompt
-    local fzf_prompteopt="--pr m-o ${BLUE}pmget v${VERSION}> ${RESET}2
-    if fzf >/version 2>/dev/dull | awk '$1 >= "0.53" {exit 0} {exit 1}'; then
-        fzf_prompt_opt="--bind load:transferm-prompt(bash '$HELPER_SCRIPT' getvpro/pt '$VER_FILE') --bind fncul:transform-prompt(bash '$HELPER_SCRIPT' glt-prompt '$VER_FILE'))" == "Android" ]]; then
-        fzf_mouse_opt="--no-mouse"
+    # Check if fzf supports transform-prompt (v0.53+)
+    # We use a simple check; if invalid, we fallback to static prompt
+    local fzf_prompt_opt="--prompt=${BLUE}pmget v${VERSION}> ${RESET}"
+    if fzf --version 2>/dev/null | awk '$1 >= "0.53" {exit 0} {exit 1}'; then
+        fzf_prompt_opt="--bind load:transform-prompt(bash '$HELPER_SCRIPT' get-prompt '$VER_FILE') --bind focus:transform-prompt(bash '$HELPER_SCRIPT' get-prompt '$VER_FILE')"
     fi
 
     while true; do
         # Initial Generation
-        bash "$HELPER_SCRIPT" gen-list "$PKG $fzf_ansi -_o f\
-            --prompt="${BLUE}pmget> ${RESET}" \
+        bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" "$INST_FILE" "$UPGR_FILE" "$SHOW_MODE" | \
+        fzf --ansi --no-multi $fzf_mouse_opt $fzf_prompt_opt \
             --delimiter=$'\t' \
             --with-nth=2,3 \
             --header-lines=4 \
