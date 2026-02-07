@@ -2,7 +2,8 @@
 # pmget - Package Manager Getter (https://github.com/gabrielmsilva00/pmget)
 
 VERSION="1.2.1"
-
+REPO="gabrielmsilva00/pmget"
+MAINTAINERS=("Gabriel Silva (@gabrielmsilva00)")
 
 # Colors
 BOLD=$(tput bold 2>/dev/null) || BOLD=""
@@ -20,7 +21,7 @@ WHITE=$(tput setaf 7 2>/dev/null) || WHITE=""
 # Usage: curl -fsSL <url>/pmget | bash [-s -- OPTIONS]
 # ============================================================================
 
-PMGET_URL="https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget"
+PMGET_URL="https://raw.githubusercontent.com/${REPO}/main/pmget"
 
 self_install() {
     local install_mode=""
@@ -58,6 +59,8 @@ self_install() {
 
     echo "${BOLD}${BLUE}pmget installer${RESET}"
     echo "${BLUE}Target:${RESET} $install_dir"
+    echo "${BLUE}Repo:${RESET}   https://github.com/$REPO"
+    echo "${BLUE}Devs:${RESET}   ${MAINTAINERS[*]}"
     echo
 
     # Check for existing pmget installation
@@ -307,7 +310,8 @@ show_info() {
 show_help() {
     cat <<EOF
 ${BOLD}${BLUE}pmget${RESET} v${VERSION} - Package Manager Getter
-https://github.com/gabrielmsilva00/pmget
+https://github.com/$REPO
+Maintained by: ${MAINTAINERS[*]}
 
 ${BOLD}Usage:${RESET}
   pmget                     Launch interactive TUI
@@ -317,7 +321,7 @@ ${BOLD}Usage:${RESET}
 
 
 ${BOLD}Install pmget (one-liner):${RESET}
-  curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash -s -- --self-install
+  curl -fsSL https://raw.githubusercontent.com/${REPO}/main/pmget | bash -s -- --self-install
 
 ${BOLD}Options:${RESET}
   -c, --cli                 CLI mode (non-interactive)
@@ -392,13 +396,13 @@ run_tui() {
     STATE_FILE="$TMP_DIR/state"
     INST_FILE="$TMP_DIR/installed"
     UPGR_FILE="$TMP_DIR/upgradeable"
-    UPGR_FILE="$TMP_DIR/upgradeable""
+    UPGR_FILE="$TMP_DIR/upgradeable"
     VER_FILE="$TMP_DIR/remote_ver"
     
     # Async Update Check
     (
-        r_ver=$(curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | grep '^VERSION=' | head -n1 | cut -d'"' -f2)
-        echo "$r_ver" > "$VER_FILE
+        r_ver=$(curl -fsSL https://raw.githubusercontent.com/${REPO}/main/pmget | grep '^VERSION=' | head -n1 | cut -d'"' -f2)
+        echo "$r_ver" > "$VER_FILE"
     ) & >/dev/null 2>&1
     HELPER_SCRIPT="$TMP_DIR/helper.sh"
     
