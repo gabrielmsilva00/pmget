@@ -283,7 +283,7 @@ fetch_upgradeable() {
 show_info() {
     echo -e "${BOLD}${CYAN}Package Info:${RESET}\n"
     case "$DETECTED_PM" in
-        apt)      apt-cache show "$1" 2>/dev/null | grep -Ev '^(Section:|Priority:|Installed|Essential:|SHA1:|SHA256:|SHA512:|MD5sum:|Filename:|Size:|Task:)' ;;
+        apt)      apt-cache show "$1" 2>/dev/null | grep -Ev '^(Section:|Priority:|Installed|Essential:|SHA1:|SHA256:|SHA512:|MD5sum:|Description-md5:|Filename:|Size:|Task:)' ;;
         dnf)      dnf info "$1" 2>/dev/null ;;
         pacman)   pacman -Si "$1" 2>/dev/null || pacman -Qi "$1" 2>/dev/null ;;
         zypper)   zypper info "$1" 2>/dev/null ;;
@@ -463,7 +463,7 @@ _info() {
     echo -e "\033[1m\033[34mPackage Information:\033[0m\n"
     
     case "$pm_name" in
-        apt)    apt-cache show "$pkg" 2>/dev/null | grep -Ev '^(Section:|Priority:|Installed|Essential:|SHA1:|SHA256:|SHA512:|MD5sum:|Filename:|Size:|Task:)' ;;
+        apt)    apt-cache show "$pkg" 2>/dev/null | grep -Ev '^(Section:|Priority:|Installed|Essential:|SHA1:|SHA256:|SHA512:|MD5sum:|Description-md5:|Filename:|Size:|Task:)' ;;
         dnf)    "$pm_path" info "$pkg" 2>/dev/null ;;
         pacman) "$pm_path" -Si "$pkg" 2>/dev/null || "$pm_path" -Qi "$pkg" 2>/dev/null ;;
         zypper) "$pm_path" info "$pkg" 2>/dev/null ;;
@@ -510,7 +510,7 @@ _internal_gen_list() {
         printf "_\t%s%s  SUDO: %s%s%s%s\n", BOLD, GREY, RESET, BOLD, (sudo_on ? GREEN "ON" : RED "OFF"), RESET
         printf "_\t%s%s  SELECTED: %s%sInstall: %d | Remove: %d | Upgrade: %d%s\n", BOLD, GREY, RESET, WHITE, n_inst, n_rem, n_upgr, RESET
         printf "_\t%s%s  KEYS: %s%s(Tab: Sudo | ←/→/Space: Cycle | Enter: Apply | Esc: Exit)%s\n", BOLD, GREY, RESET, WHITE, RESET
-        printf "_\t%s%s  SYMBOLS: %s%s[ ] None  [✓] Inst  [^] Upgr  [+] Add  [-] Rem  [↑] Upgr%s\n", BOLD, GREY, RESET, WHITE, RESET
+        printf "_\t%s%s  SYMBOLS: %s%s[ ] None  [✓] Inst [+] Add  [-] Rem  [↑] Upgr%s\n", BOLD, GREY, RESET, WHITE, RESET
     }
     {
         split($0, arr, "\t")
