@@ -207,6 +207,7 @@ fi
 
 CLI_MODE=false
 USE_SUDO=false
+SHOW_MODE="ALL"
 declare -a INSTALL_PKGS=()
 declare -a REMOVE_PKGS=()
 DETECTED_PM=""
@@ -306,7 +307,8 @@ ${BOLD}Install pmget (one-liner):${RESET}
 
 ${BOLD}Options:${RESET}
   -c, --cli                 CLI mode (non-interactive)
-  -s, --sudo                Use sudo for operations
+  --sudo                    Use sudo for operations
+  -s, --show [a|i|u]        Show mode: (a)ll, (i)nstalled, (u)pgradeable
   -i PKG, --install PKG     Install packages (CLI mode)
   -r PKG, --remove PKG      Remove packages (CLI mode)
   --info PKG                Show package information
@@ -319,7 +321,8 @@ ${BOLD}Options:${RESET}
 
 ${BOLD}Examples:${RESET}
   pmget                          # Launch TUI
-  pmget -c -s -i vim htop        # Install vim and htop with sudo
+  pmget -s i                     # Show only installed packages
+  pmget -c --sudo -i vim htop    # Install vim and htop with sudo
   pmget -c -r nano               # Remove nano
   pmget --info curl              # Show info for curl package
 EOF
@@ -330,7 +333,15 @@ parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -c|--cli)     CLI_MODE=true ;;
-            -s|--sudo)    USE_SUDO=true ;;
+            --sudo)       USE_SUDO=true ;;
+            -s|--show)    
+                case "$2" in
+                    i|installed)   SHOW_MODE="INSTALLED" ;;
+                    u|upgradeable) SHOW_MODE="UPGRADEABLE" ;;
+                    a|all)         SHOW_MODE="ALL" ;;
+                    *) echo "${RED}Invalid show mode: $2${RESET}"; exit 1 ;;
+                esac
+                shift ;;
             -i|--install) mode="i" ;;
             -r|--remove)  mode="r" ;;
             -v|--version) echo "pmget v${VERSION}"; exit 0 ;;
@@ -603,7 +614,6 @@ case "$1" in
     update-state) _internal_state_mod "$2" "$3" "$4" "$5" "$6" ;;
     toggle-sudo)  _toggle_sudo "$2" ;;
     info)         _info "$DETECTED_PM" "$PM_PATH" "$2" ;;
-    smart-reload) _internal_smart_reload "$2" "$3" "$4" "$5" "$6" "$7" "$8" ;;
 esac
 EOF
     
@@ -611,11 +621,7 @@ EOF
     # Field 1 is the package ID (always clean), Field 2+ is for display.
     local helper_cmd="bash '$HELPER_SCRIPT'"
     
-    # We use smart-reload with force for manual actions
-    local cmd_force_reload="$helper_cmd smart-reload \"{q}\" force '$MODE_FILE' '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE'"
-    # We use smart-reload without force for typing
-    local cmd_typing_reload="$helper_cmd smart-reload \"{q}\" normal '$MODE_FILE' '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE'"
-
+    local cmd_reload="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE'"
     local cmd_update_next="$helper_cmd update-state '$STATE_FILE' '{1}' next '$INST_FILE' '$UPGR_FILE'"
     local cmd_update_prev="$helper_cmd update-state '$STATE_FILE' '{1}' prev '$INST_FILE' '$UPGR_FILE'"
     local cmd_toggle="$helper_cmd update-state '$STATE_FILE' '{1}' toggle_or_select '$INST_FILE' '$UPGR_FILE'"
@@ -630,16 +636,14 @@ EOF
     
     # TUI Loop with confirmation flows
     local fzf_exit_code=0
+    # TUI Loop with confirmation flows
+    local fzf_exit_code=0
     while true; do
-        # Always reset mode to ALL on loop restart (fzf restart)
-        echo "ALL" > "$MODE_FILE"
-        
         # Initial Generation
-        bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" "$INST_FILE" "$UPGR_FILE" | \
+        bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" "$INST_FILE" "$UPGR_FILE" "$SHOW_MODE" | \
         fzf --ansi --no-multi \
             --prompt="${BLUE}pmget> ${RESET}" \
             --delimiter=$'\t+' \
-            --nth=2.. \
             --with-nth=2,3 \
             --header-lines=4 \
             --tiebreak=begin,index \
@@ -648,11 +652,10 @@ EOF
             --layout=reverse \
             --info=inline \
             --no-bold \
-            --bind "change:reload($cmd_typing_reload || true)" \
-            --bind "right:reload($cmd_update_next && $cmd_force_reload)" \
-            --bind "left:reload($cmd_update_prev && $cmd_force_reload)" \
-            --bind "space:reload($cmd_toggle && $cmd_force_reload)" \
-            --bind "tab:reload($helper_cmd toggle-sudo '$STATE_FILE' && $cmd_force_reload)" \
+            --bind "right:reload($cmd_update_next && $cmd_reload)" \
+            --bind "left:reload($cmd_update_prev && $cmd_reload)" \
+            --bind "space:reload($cmd_toggle && $cmd_reload)" \
+            --bind "tab:reload($helper_cmd toggle-sudo '$STATE_FILE' && $cmd_reload)" \
             --bind "enter:accept" \
             > /dev/null
         
