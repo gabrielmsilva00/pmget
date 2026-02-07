@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pmget - Package Manager Getter (https://github.com/gabrielmsilva00/pmget)
 
-VERSION="1.1.12"
+VERSION="1.1.13"
 
 # Colors
 BOLD=$(tput bold 2>/dev/null) || BOLD=""
@@ -253,11 +253,11 @@ run_pm() {
 
 fetch_packages() {
     case "$DETECTED_PM" in
-        apt)      apt-cache search . 2>/dev/null | awk -F' - ' '{print $1 "\t\t\t" $0}' | sort -u ;;
-        dnf)      dnf repoquery --qf '%{name}\t\t\t%{name} - %{summary}' 2>/dev/null ;;
-        pacman)   pacman -Slq 2>/dev/null | awk '{print $1 "\t\t\t" $1}' ;;
-        zypper)   zypper packages 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3);print $3 "\t\t\t" $3}' ;;
-        apk)      apk search -v 2>/dev/null | awk '{print $1 "\t\t\t" $0}' | sed 's/ - / /' ;;
+        apt)      apt-cache search . 2>/dev/null | awk -F' - ' '{print $1 "\t\t\t\t\t\t" $0}' | sort -u ;;
+        dnf)      dnf repoquery --qf '%{name}\t\t\t%{version}-%{release}\t\t\t%{summary}' 2>/dev/null ;;
+        pacman)   pacman -Sl 2>/dev/null | awk '{print $2 "\t\t\t" $3 "\t\t\t" $2}' ;;
+        zypper)   zypper packages 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3); gsub(/ /,"",$4); print $3 "\t\t\t" $4 "\t\t\t" $3}' ;;
+        apk)      apk search -v 2>/dev/null | sed -E 's/(.*)-([0-9].*)/\1\t\t\t\2\t\t\t\1/' ;;
     esac
 }
 
@@ -538,8 +538,12 @@ _internal_gen_list() {
     {
         split($0, arr, "\t+")
         pkg = arr[1] 
-        val = arr[2]
-        display = (val == "" ? pkg : val)
+        avail_ver = arr[2]
+        
+        # Description is the rest (Field 3+)
+        # If fetch_packages outputs 3 columns, arr[3] is description.
+        display = arr[3]
+        if (display == "") display = pkg
         
         s = state[pkg]; is_inst = (pkg in installed); is_upgr = (pkg in upgradeable)
         
@@ -558,9 +562,16 @@ _internal_gen_list() {
         }
         else if (is_inst) { 
             sym = "[✓]"; col = BOLD BLUE 
-            ver_info = GREY installed[pkg] RESET
+            ver_info = WHITE installed[pkg] RESET
+        }
+        else {
+             # Not Installed
+             ver_info = GREY avail_ver RESET
         }
         
+        # Padding to prevent merge
+        if (ver_info == "" || ver_info == (GREY RESET)) ver_info = " "
+
         # Display [sym] pkg-name (tab) ver_info (tab) display (tab) magic_tag
         suffix = (search_tag != "" ? "\t" search_tag : "")
         printf "%s\t%s%s %s%s\t\t\t%s\t%s%s%s\n", pkg, col, sym, pkg, rst, ver_info, display, rst, suffix
