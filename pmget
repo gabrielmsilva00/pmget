@@ -66,10 +66,23 @@ self_install() {
             current_ver=$(grep "^VERSION=" "$existing_pmget" 2>/dev/null | head -n 1 | cut -d'"' -f2)
             current_ver="${current_ver:-?}"
             if [[ "$current_ver" == "$VERSION" ]]; then
-                echo "${GREEN}✓${RESET} pmget v${VERSION} is already installed"
-                exit 0
+                echo -n "pmget v${VERSION} is already installed. Reinstall? [y/N] "
+                local response
+                if [[ -c /dev/tty ]]; then
+                    read -r -n 1 response < /dev/tty
+                else
+                    read -r -n 1 response 2>/dev/null || response="n"
+                fi
+
+                if [[ ! "$response" =~ ^[yY]$ ]]; then
+                    echo
+                    exit 0
+                fi
+                echo
+                echo "${CYAN}→${RESET} Reinstalling v${VERSION}..."
+            else
+                echo "${CYAN}→${RESET} Updating pmget v${current_ver} to v${VERSION}"
             fi
-            echo "${CYAN}→${RESET} Updating pmget v${current_ver} to v${VERSION}"
         else
             echo "${YELLOW}⚠${RESET} Different 'pmget' found: $existing_pmget"
             echo "  Will install to: $install_dir/pmget"
@@ -550,7 +563,7 @@ EOF
             --delimiter=$'\t' \
             --with-nth=2 \
             --header-lines=4 \
-            --tiebreak=begin,length,index \
+            --tiebreak=length,begin,index \
             --preview="$cmd_preview" \
             --preview-window="top:40%" \
             --layout=reverse \
