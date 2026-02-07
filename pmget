@@ -365,6 +365,7 @@ run_tui() {
     STATE_FILE="$TMP_DIR/state"
     INST_FILE="$TMP_DIR/installed"
     UPGR_FILE="$TMP_DIR/upgradeable"
+    MODE_FILE="$TMP_DIR/mode"
     HELPER_SCRIPT="$TMP_DIR/helper.sh"
     
     # Cleanup on exit
@@ -377,6 +378,7 @@ run_tui() {
     fi
     
     touch "$STATE_FILE" "$INST_FILE" "$UPGR_FILE"
+    echo "ALL" > "$MODE_FILE"
     
     fetch_packages > "$PKG_FILE"
     fetch_installed > "$INST_FILE"
@@ -475,7 +477,11 @@ _internal_gen_list() {
     local state_file="$2"
     local inst_file="$3"
     local upgr_file="$4"
-    awk -v state_file="$state_file" -v inst_file="$inst_file" -v upgr_file="$upgr_file" '
+    local filter_mode="${5:-ALL}"
+    local search_tag="${6:-}"
+    
+    awk -v state_file="$state_file" -v inst_file="$inst_file" -v upgr_file="$upgr_file" \
+        -v filter_mode="$filter_mode" -v search_tag="$search_tag" '
     BEGIN {
         sudo_on = 0
         if (state_file != "") {
@@ -488,14 +494,14 @@ _internal_gen_list() {
         }
         if (inst_file != "") {
             while ((getline line < inst_file) > 0) {
-                split(line, parts, "\t")
+                split(line, parts, "\t+")
                 installed[parts[1]] = parts[2]
             }
             close(inst_file)
         }
         if (upgr_file != "") {
             while ((getline line < upgr_file) > 0) {
-                split(line, parts, "\t")
+                split(line, parts, "\t+")
                 upgradeable[parts[1]] = parts[2]
             }
             close(upgr_file)
@@ -513,14 +519,18 @@ _internal_gen_list() {
         }
         
         printf "_\t%s%s  SUDO: %s%s%s%s\n", BOLD, YELLOW, RESET, BOLD, (sudo_on ? GREEN "ON" : RED "OFF"), RESET
-        printf "_\t%s%s  SELECTED: %s%sInstall: %d | Remove: %d | Upgrade: %d%s\n", BOLD, BLUE, RESET, WHITE, n_inst, n_rem, n_upgr, RESET
+        printf "_\t%s%s  SELECTED: %sInstall: %s%d%s | Remove: %s%d%s | Upgrade: %s%d%s\n", BOLD, BLUE, WHITE, (n_inst>0?GREEN:WHITE), n_inst, WHITE, (n_rem>0?RED:WHITE), n_rem, WHITE, (n_upgr>0?BLUE:WHITE), n_upgr, RESET
         printf "_\t%s%s  KEYS: %s%s(Tab: Sudo | ←/→/Space: Cycle | Enter: Apply | Esc: Exit)%s\n", BOLD, CYAN, RESET, WHITE, RESET
         printf "_\t%s%s  SYMBOLS: %s%s[ ] None  [✓] Inst [+] Add  [-] Rem  [↑] Upgr%s\n", BOLD, MAGENTA, RESET, WHITE, RESET
     }
     {
-        split($0, arr, "\t")
+        split($0, arr, "\t+")
         pkg = arr[1]; display = (arr[2] == "" ? pkg : arr[2])
         s = state[pkg]; is_inst = (pkg in installed); is_upgr = (pkg in upgradeable)
+        
+        # Filtering
+        if (filter_mode == "INSTALLED" && !is_inst) next
+        if (filter_mode == "UPGRADEABLE" && !is_upgr) next
         
         sym = "[ ]"; col = RESET; rst = RESET; ver_info = ""
         
@@ -537,23 +547,62 @@ _internal_gen_list() {
         }
         
         # Display [sym] pkg-name (tab) ver_info (tab) display
-        printf "%s\t%s%s %s%s\t%s\t%s%s\n", pkg, col, sym, pkg, rst, ver_info, display, rst
+        # Display [sym] pkg-name (tab) ver_info (tab) display (tab) magic_tag
+        suffix = (search_tag != "" ? "\t" search_tag : "")
+        printf "%s\t%s%s %s%s\t%s\t%s%s%s\n", pkg, col, sym, pkg, rst, ver_info, display, rst, suffix
     }
     ' "$pkg_file"
 }
 
+_internal_smart_reload() {
+    local query="$1"
+    local force="$2"
+    local mode_file="$3"
+    local pkg_file="$4"
+    local state_file="$5"
+    local inst_file="$6"
+    local upgr_file="$7"
+    
+    local current_mode="ALL"
+    [[ -f "$mode_file" ]] && current_mode=$(<"$mode_file")
+    
+    local target_mode="ALL"
+    local tag=""
+    
+    if [[ "$query" == ":-i"* ]]; then
+        target_mode="INSTALLED"
+        tag=":-i"
+    elif [[ "$query" == ":-u"* ]]; then
+        target_mode="UPGRADEABLE"
+        tag=":-u"
+    fi
+    
+    if [[ "$force" != "force" && "$target_mode" == "$current_mode" ]]; then
+        exit 1
+    fi
+    
+    echo "$target_mode" > "$mode_file"
+    _internal_gen_list "$pkg_file" "$state_file" "$inst_file" "$upgr_file" "$target_mode" "$tag"
+}
+
 case "$1" in
-    gen-list)     _internal_gen_list "$2" "$3" "$4" "$5" ;;
+    gen-list)     _internal_gen_list "$2" "$3" "$4" "$5" "$6" "$7" ;;
     update-state) _internal_state_mod "$2" "$3" "$4" "$5" "$6" ;;
     toggle-sudo)  _toggle_sudo "$2" ;;
     info)         _info "$DETECTED_PM" "$PM_PATH" "$2" ;;
+    smart-reload) _internal_smart_reload "$2" "$3" "$4" "$5" "$6" "$7" "$8" ;;
 esac
 EOF
     
     # Define Commands using bash to execute the helper script
     # Field 1 is the package ID (always clean), Field 2+ is for display.
     local helper_cmd="bash '$HELPER_SCRIPT'"
-    local cmd_reload="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE'"
+    
+    # We use smart-reload with force for manual actions
+    local cmd_force_reload="$helper_cmd smart-reload \"{q}\" force '$MODE_FILE' '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE'"
+    # We use smart-reload without force for typing
+    local cmd_typing_reload="$helper_cmd smart-reload \"{q}\" normal '$MODE_FILE' '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE'"
+
     local cmd_update_next="$helper_cmd update-state '$STATE_FILE' '{1}' next '$INST_FILE' '$UPGR_FILE'"
     local cmd_update_prev="$helper_cmd update-state '$STATE_FILE' '{1}' prev '$INST_FILE' '$UPGR_FILE'"
     local cmd_toggle="$helper_cmd update-state '$STATE_FILE' '{1}' toggle_or_select '$INST_FILE' '$UPGR_FILE'"
@@ -569,6 +618,9 @@ EOF
     # TUI Loop with confirmation flows
     local fzf_exit_code=0
     while true; do
+        # Always reset mode to ALL on loop restart (fzf restart)
+        echo "ALL" > "$MODE_FILE"
+        
         # Initial Generation
         bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" "$INST_FILE" "$UPGR_FILE" | \
         fzf --ansi --no-multi \
@@ -582,10 +634,11 @@ EOF
             --layout=reverse \
             --info=inline \
             --no-bold \
-            --bind "right:reload($cmd_update_next && $cmd_reload)" \
-            --bind "left:reload($cmd_update_prev && $cmd_reload)" \
-            --bind "space:reload($cmd_toggle && $cmd_reload)" \
-            --bind "tab:reload($helper_cmd toggle-sudo '$STATE_FILE' && $cmd_reload)" \
+            --bind "change:reload($cmd_typing_reload || true)" \
+            --bind "right:reload($cmd_update_next && $cmd_force_reload)" \
+            --bind "left:reload($cmd_update_prev && $cmd_force_reload)" \
+            --bind "space:reload($cmd_toggle && $cmd_force_reload)" \
+            --bind "tab:reload($helper_cmd toggle-sudo '$STATE_FILE' && $cmd_force_reload)" \
             --bind "enter:accept" \
             > /dev/null
         
@@ -599,7 +652,8 @@ EOF
         if [[ $fzf_exit_code -ne 0 ]]; then
             echo
             echo "${YELLOW}Exit without changes?${RESET}"
-            echo -n "  Press ${BOLD}Enter${RESET} to return, ${BOLD}any other key${RESET} to exit: "
+            echo "Selected: ${GREEN}$n_inst${RESET} Install, ${RED}$n_rem${RESET} Remove, ${BLUE}$n_upgr${RESET} Upgrade"
+            echo -n "  Press ${BOLD}Enter/Space${RESET} to return, ${BOLD}any other key${RESET} to exit: "
             
             # Read single keypress
             local key
