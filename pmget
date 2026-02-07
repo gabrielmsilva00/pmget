@@ -575,12 +575,15 @@ _internal_smart_reload() {
     local target_mode="ALL"
     local tag=""
     
-    if [[ "$query" == ":-i"* ]]; then
+    if [[ "$query" == ":i"* ]]; then
         target_mode="INSTALLED"
-        tag=":-i"
-    elif [[ "$query" == ":-u"* ]]; then
+        tag=":i"
+    elif [[ "$query" == ":u"* ]]; then
         target_mode="UPGRADEABLE"
-        tag=":-u"
+        tag=":u"
+    elif [[ "$query" == ":"* ]]; then
+        target_mode="ALL"
+        tag="$query"
     fi
     
     if [[ "$force" != "force" && "$target_mode" == "$current_mode" ]]; then
@@ -632,6 +635,7 @@ EOF
         fzf --ansi --no-multi \
             --prompt="${BLUE}pmget> ${RESET}" \
             --delimiter=$'\t+' \
+            --nth=2.. \
             --with-nth=2,3 \
             --header-lines=4 \
             --tiebreak=begin,index \
