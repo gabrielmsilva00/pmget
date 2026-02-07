@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pmget - Package Manager Getter (https://github.com/gabrielmsilva00/pmget)
 
-VERSION="1.2.4"
+VERSION="1.2.5"
 REPO="gabrielmsilva00/pmget"
 MAINTAINERS=("Gabriel Silva (@gabrielmsilva00)")
 
@@ -761,7 +761,11 @@ EOF
             fi
 
             echo -e "  ${YELLOW}Exit without changes?${RESET}"
-            echo -e "  Selected: [+] ${GREEN}$n_inst${RESET} Add  [-] ${RED}$n_rem${RESET} Rem  [↑] ${BLUE}$n_upgr${RESET} Upgr"
+            echo -e "  ${BOLD}${WHITE}Selected:${RESET}"
+            echo -e "    ${GREEN}$n_inst${RESET} Install"
+            echo -e "    ${RED}$n_rem${RESET} Remove"
+            echo -e "    ${BLUE}$n_upgr${RESET} Upgrade"
+            echo
             echo -n "  Press ${BOLD}Enter/Space${RESET} to return, ${BOLD}any other key${RESET} to exit: "
             
             local key
