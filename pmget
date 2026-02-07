@@ -558,10 +558,10 @@ _internal_gen_list() {
             else if (state[p] == "3") n_upgr++
         }
         
-        printf "_\t%s%s  SUDO: %s%s%s%s\n", BOLD, YELLOW, RESET, BOLD, (sudo_on ? GREEN "ON" : RED "OFF"), RESET
-        printf "_\t%s%s  SELECTED: %sInstall: %s%d%s | Remove: %s%d%s | Upgrade: %s%d%s\n", BOLD, BLUE, WHITE, (n_inst>0?GREEN:WHITE), n_inst, WHITE, (n_rem>0?RED:WHITE), n_rem, WHITE, (n_upgr>0?BLUE:WHITE), n_upgr, RESET
-        printf "_\t%s%s  KEYS: %s%s(Tab: Sudo | ←/→/Space: Cycle | Enter: Apply | Esc: Exit)%s\n", BOLD, CYAN, RESET, WHITE, RESET
-        printf "_\t%s%s  SYMBOLS: %s%s[ ] None  [✓] Inst [+] Add  [-] Rem  [↑] Upgr%s\n", BOLD, MAGENTA, RESET, WHITE, RESET
+        printf "_\t%s%s  SUDO     %s%s%s\n", BOLD, YELLOW, (sudo_on ? GREEN "● ON" : RED "○ OFF"), RESET, BOLD
+        printf "_\t%s%s  SELECTED %s[+] %s%d  %s[-] %s%d  %s[↑] %s%d%s\n", BOLD, BLUE, GREEN, WHITE, n_inst, RED, WHITE, n_rem, BLUE, WHITE, n_upgr, RESET
+        printf "_\t%s%s  KEYS     %sTab: Sudo  ←/→/Space: Cycle  Enter: Apply  Esc: Exit%s\n", BOLD, CYAN, WHITE, RESET
+        printf "_\t%s%s  SYMBOLS  %s[ ] None  [✓] Inst  [+] Add  [-] Rem  [↑] Upgr%s\n", BOLD, MAGENTA, WHITE, RESET
     }
     {
         split($0, arr, "\t+")
@@ -610,7 +610,7 @@ _internal_gen_list() {
 
         # Display [sym] pkg-name (spaces) (tab) ver_info (tab) display (tab) magic_tag
         suffix = (search_tag != "" ? "\t" search_tag : "")
-        printf "%s\t%s%s %s%s%s\t%s\t%s%s%s\n", pkg, col, sym, pkg, rst, padding, ver_info, display, rst, suffix
+        printf "%s\t%s%s %s%s%s\t%s\t%s%s%s\n", pkg, col, sym, pkg, RESET, padding, ver_info, display, RESET, suffix
     }
     ' "$pkg_file"
 }
@@ -760,12 +760,10 @@ EOF
                 return 0
             fi
 
-            echo
-            echo "${YELLOW}Exit without changes?${RESET}"
-            echo "Selected: ${GREEN}$n_inst${RESET} Install, ${RED}$n_rem${RESET} Remove, ${BLUE}$n_upgr${RESET} Upgrade"
+            echo -e "  ${YELLOW}Exit without changes?${RESET}"
+            echo -e "  Selected: [+] ${GREEN}$n_inst${RESET} Add  [-] ${RED}$n_rem${RESET} Rem  [↑] ${BLUE}$n_upgr${RESET} Upgr"
             echo -n "  Press ${BOLD}Enter/Space${RESET} to return, ${BOLD}any other key${RESET} to exit: "
             
-            # Read single keypress
             local key
             read -rsn1 key < /dev/tty
             
@@ -798,22 +796,19 @@ EOF
         local upgr=$(grep '=3$' "$STATE_FILE" 2>/dev/null | cut -d= -f1 | tr '\n' ' ')
          
         if [[ -z "$inst" && -z "$rem" && -z "$upgr" ]]; then
-             echo
-             echo "${YELLOW}No packages selected${RESET}"
+             echo -e "  ${YELLOW}No packages selected${RESET}"
              return 0
         fi
 
         # Show summary and ask for confirmation
+        echo -e "  ${BOLD}${WHITE}Pending Changes:${RESET}"
+        [[ -n "$inst" ]] && echo -e "  ${GREEN}[+]${RESET} Install:  $inst"
+        [[ -n "$rem" ]] && echo -e "  ${RED}[-]${RESET} Remove:   $rem"
+        [[ -n "$upgr" ]] && echo -e "  ${BLUE}[↑]${RESET} Upgrade:  $upgr"
+        [[ "$USE_SUDO" == true ]] && echo -e "  ${YELLOW}●${RESET} Sudo:     enabled"
         echo
-        echo "${BOLD}${WHITE}Pending Changes:${RESET}"
-        [[ -n "$inst" ]] && echo "  ${GREEN}Install:${RESET} $inst"
-        [[ -n "$rem" ]] && echo "  ${RED}Remove:${RESET} $rem"
-        [[ -n "$upgr" ]] && echo "  ${BLUE}Upgrade:${RESET} $upgr"
-        [[ "$USE_SUDO" == true ]] && echo "  ${YELLOW}Sudo:${RESET} enabled"
-        echo
-        echo -n "Press ${BOLD}Enter${RESET} to proceed, ${BOLD}Esc${RESET} to go back: "
+        echo -n "  Press ${BOLD}Enter${RESET} to proceed, ${BOLD}Esc${RESET} to go back: "
         
-        # Read single keypress
         local key
         read -rsn1 key < /dev/tty
         
@@ -840,7 +835,7 @@ EOF
     # Execute changes
     echo
     local cmd="pmget -c"
-    [[ "$USE_SUDO" == true ]] && cmd+=" -s"
+    [[ "$USE_SUDO" == true ]] && cmd+=" --sudo"
     [[ -n "$inst" ]] && cmd+=" -i $inst"
     [[ -n "$rem" ]] && cmd+=" -r $rem"
     # Upgrades are treated as installs (package managers handle upgrades via install)
