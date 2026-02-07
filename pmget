@@ -494,16 +494,18 @@ _internal_gen_list() {
         }
         if (inst_file != "") {
             while ((getline line < inst_file) > 0) {
-                split(line, parts, "\t")
-                val = parts[2]; if (val == "") val = parts[4]
+            while ((getline line < inst_file) > 0) {
+                split(line, parts, "\t+")
+                val = parts[2]
                 installed[parts[1]] = val
             }
             close(inst_file)
         }
         if (upgr_file != "") {
             while ((getline line < upgr_file) > 0) {
-                split(line, parts, "\t")
-                val = parts[2]; if (val == "") val = parts[4]
+            while ((getline line < upgr_file) > 0) {
+                split(line, parts, "\t+")
+                val = parts[2]
                 upgradeable[parts[1]] = val
             }
             close(upgr_file)
@@ -526,9 +528,9 @@ _internal_gen_list() {
         printf "_\t%s%s  SYMBOLS: %s%s[ ] None  [✓] Inst [+] Add  [-] Rem  [↑] Upgr%s\n", BOLD, MAGENTA, RESET, WHITE, RESET
     }
     {
-        split($0, arr, "\t")
+        split($0, arr, "\t+")
         pkg = arr[1] 
-        val = arr[2]; if (val == "") val = arr[4]
+        val = arr[2]
         display = (val == "" ? pkg : val)
         
         s = state[pkg]; is_inst = (pkg in installed); is_upgr = (pkg in upgradeable)
@@ -629,8 +631,8 @@ EOF
         bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" "$INST_FILE" "$UPGR_FILE" | \
         fzf --ansi --no-multi \
             --prompt="${BLUE}pmget> ${RESET}" \
-            --delimiter=$'\t' \
-            --with-nth=2,5 \
+            --delimiter=$'\t+' \
+            --with-nth=2,3 \
             --header-lines=4 \
             --tiebreak=begin,index \
             --preview="$cmd_preview" \
