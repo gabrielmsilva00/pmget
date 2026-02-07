@@ -395,7 +395,6 @@ run_tui() {
     STATE_FILE="$TMP_DIR/state"
     INST_FILE="$TMP_DIR/installed"
     UPGR_FILE="$TMP_DIR/upgradeable"
-    UPGR_FILE="$TMP_DIR/upgradeable"
     VER_FILE="$TMP_DIR/remote_ver"
     
     # Async Update Check
@@ -706,33 +705,40 @@ EOF
     if [[ "$(uname -o 2>/dev/null)" == "Android" ]]; then
         fzf_mouse_opt="--no-mouse"
     fi
-    
-    # Check if fzf supports transform-prompt (v0.53+)
-    # We use a simple check; if invalid, we fallback to static prompt
-    local fzf_prompt_opt="--prompt=${BLUE}pmget v${VERSION}> ${RESET}"
-    if fzf --version 2>/dev/null | awk '$1 >= "0.53" {exit 0} {exit 1}'; then
-        fzf_prompt_opt="--bind load:transform-prompt(bash '$HELPER_SCRIPT' get-prompt '$VER_FILE') --bind focus:transform-prompt(bash '$HELPER_SCRIPT' get-prompt '$VER_FILE')"
+    local -a fzf_opts=(
+        --ansi
+        --no-multi
+        --delimiter=$'\t'
+        --with-nth=2,3
+        --header-lines=4
+        --tiebreak=begin,index
+        --preview="$cmd_preview"
+        --preview-window="top:30%"
+        --layout=reverse
+        --info=inline
+        --no-bold
+        --bind "right:reload($cmd_update_next && $cmd_reload)"
+        --bind "left:reload($cmd_update_prev && $cmd_reload)"
+        --bind "space:reload($cmd_toggle && $cmd_reload)"
+        --bind "tab:reload($helper_cmd toggle-sudo '$STATE_FILE' && $cmd_reload)"
+        --bind "enter:accept"
+    )
+
+    if [[ -n "$fzf_mouse_opt" ]]; then
+        fzf_opts+=("$fzf_mouse_opt")
+    fi
+
+    if fzf --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -n1 | awk '$1 >= 0.45 {exit 0} {exit 1}'; then
+        fzf_opts+=(--bind "load:transform-prompt(bash '$HELPER_SCRIPT' get-prompt '$VER_FILE')")
+        fzf_opts+=(--bind "focus:transform-prompt(bash '$HELPER_SCRIPT' get-prompt '$VER_FILE')")
+    else
+        fzf_opts+=(--prompt "${BLUE}pmget v${VERSION}> ${RESET}")
     fi
 
     while true; do
         # Initial Generation
         bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" "$INST_FILE" "$UPGR_FILE" "$SHOW_MODE" | \
-        fzf --ansi --no-multi $fzf_mouse_opt $fzf_prompt_opt \
-            --delimiter=$'\t' \
-            --with-nth=2,3 \
-            --header-lines=4 \
-            --tiebreak=begin,index \
-            --preview="$cmd_preview" \
-            --preview-window="top:30%" \
-            --layout=reverse \
-            --info=inline \
-            --no-bold \
-            --bind "right:reload($cmd_update_next && $cmd_reload)" \
-            --bind "left:reload($cmd_update_prev && $cmd_reload)" \
-            --bind "space:reload($cmd_toggle && $cmd_reload)" \
-            --bind "tab:reload($helper_cmd toggle-sudo '$STATE_FILE' && $cmd_reload)" \
-            --bind "enter:accept" \
-            > /dev/null
+        fzf "${fzf_opts[@]}" > /dev/null
         
         fzf_exit_code=$?
         
