@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pmget - Package Manager Getter (https://github.com/gabrielmsilva00/pmget)
 
-VERSION="1.2.7"
+VERSION="1.2.8"
 REPO="gabrielmsilva00/pmget"
 MAINTAINERS=("Gabriel Silva (@gabrielmsilva00)")
 
@@ -776,17 +776,29 @@ EOF
         fzf_opts+=("$fzf_mouse_opt")
     fi
 
-    if fzf --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -n1 | awk '$1 >= 0.45 {exit 0} {exit 1}'; then
-        fzf_opts+=(--bind "load:transform-prompt(bash '$HELPER_SCRIPT' get-prompt '$VER_FILE')")
-        fzf_opts+=(--bind "focus:transform-prompt(bash '$HELPER_SCRIPT' get-prompt '$VER_FILE')")
-    else
-        fzf_opts+=(--prompt "v${VERSION} ${BLUE}pmget> ${RESET}")
-    fi
+
 
     while true; do
+        # Calculate prompt color once per loop iteration
+        local prompt_str="v${VERSION} ${BLUE}pmget> ${RESET}"
+        if [[ -f "$VER_FILE" ]]; then
+            local r_ver
+            r_ver=$(<"$VER_FILE")
+            if [[ -n "$r_ver" && "$r_ver" != "$VERSION" ]]; then
+                 local col="\033[92m" # Green (Latest) by default
+                 IFS=. read -r l_maj l_min l_pat <<< "$VERSION"
+                 IFS=. read -r r_maj r_min r_pat <<< "$r_ver"
+                 if (( r_maj > l_maj )); then col="\033[90m"; # Grey (Major)
+                 elif (( r_min > l_min )); then col="\033[31m"; # Red (Minor)
+                 elif (( r_pat > l_pat )); then col="\033[33m"; # Yellow (Patch)
+                 fi
+                 prompt_str="${BLUE}pmget ${col}v${VERSION}${BLUE}> ${RESET}"
+            fi
+        fi
+
         # Initial Generation
         bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" "$INST_FILE" "$UPGR_FILE" "$SHOW_MODE" | \
-        fzf "${fzf_opts[@]}" > /dev/null
+        fzf "${fzf_opts[@]}" --prompt "$prompt_str" > /dev/null
         
         fzf_exit_code=$?
         
