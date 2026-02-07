@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pmget - Package Manager Getter (https://github.com/gabrielmsilva00/pmget)
 
-VERSION="1.1.14"
+VERSION="1.1.15"
 
 # Colors
 BOLD=$(tput bold 2>/dev/null) || BOLD=""
@@ -262,33 +262,33 @@ fetch_packages() {
                       }
                       if(n!="") {
                           if(v=="") v=" "
-                          print n "\t\t\t" v "\t\t\t" d
+                          print n "\t" v "\t" d
                       }
                   }' | sort -u -k1,1 ;;
-        dnf)      dnf repoquery --qf '%{name}\t\t\t%{version}-%{release}\t\t\t%{summary}' 2>/dev/null ;;
-        pacman)   pacman -Sl 2>/dev/null | awk '{print $2 "\t\t\t" $3 "\t\t\t" $2}' ;;
-        zypper)   zypper packages 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3); gsub(/ /,"",$4); print $3 "\t\t\t" $4 "\t\t\t" $3}' ;;
-        apk)      apk search -v 2>/dev/null | sed -E 's/(.*)-([0-9].*)/\1\t\t\t\2\t\t\t\1/' ;;
+        dnf)      dnf repoquery --qf '%{name}\t%{version}-%{release}\t%{summary}' 2>/dev/null ;;
+        pacman)   pacman -Sl 2>/dev/null | awk '{print $2 "\t" $3 "\t" $2}' ;;
+        zypper)   zypper packages 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3); gsub(/ /,"",$4); print $3 "\t" $4 "\t" $3}' ;;
+        apk)      apk search -v 2>/dev/null | sed -E 's/(.*)-([0-9].*)/\1\t\2\t\1/' ;;
     esac
 }
 
 fetch_installed() {
     case "$DETECTED_PM" in
-        apt)      dpkg-query -W -f='${Package}\t\t\t${Version}\n' 2>/dev/null ;;
-        dnf)      rpm -qa --queryformat '%{NAME}\t\t\t%{VERSION}-%{RELEASE}\n' 2>/dev/null ;;
-        pacman)   pacman -Q 2>/dev/null | sed 's/ /\t\t\t/' ;;
-        zypper)   rpm -qa --queryformat '%{NAME}\t\t\t%{VERSION}-%{RELEASE}\n' 2>/dev/null ;;
-        apk)      apk info -v 2>/dev/null | sed -E 's/(.*)-([0-9].*)/\1\t\t\t\2/' ;;
+        apt)      dpkg-query -W -f='${Package}\t${Version}\n' 2>/dev/null ;;
+        dnf)      rpm -qa --queryformat '%{NAME}\t%{VERSION}-%{RELEASE}\n' 2>/dev/null ;;
+        pacman)   pacman -Q 2>/dev/null | sed 's/ /\t/' ;;
+        zypper)   rpm -qa --queryformat '%{NAME}\t%{VERSION}-%{RELEASE}\n' 2>/dev/null ;;
+        apk)      apk info -v 2>/dev/null | sed -E 's/(.*)-([0-9].*)/\1\t\2/' ;;
     esac
 }
 
 fetch_upgradeable() {
     case "$DETECTED_PM" in
-        apt)      apt list --upgradeable 2>/dev/null | awk -F/ 'NR>1 && /-/{split($0,a," "); print $1 "\t\t\t" a[2]}' ;;
-        dnf)      dnf list updates -q 2>/dev/null | awk 'NR>1 {match($1, /^([^.]+)/, n); print n[1] "\t\t\t" $2}' ;;
-        pacman)   pacman -Qu 2>/dev/null | awk '{print $1 "\t\t\t" $4}' ;;
-        zypper)   zypper list-updates 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3); gsub(/ /,"",$5); print $3 "\t\t\t" $5}' ;;
-        apk)      apk version -u 2>/dev/null | sed -nE 's/^(.*)-([0-9].*) < (.*)/\1\t\t\t\3/p' ;;
+        apt)      apt list --upgradeable 2>/dev/null | awk -F/ 'NR>1 && /-/{split($0,a," "); print $1 "\t" a[2]}' ;;
+        dnf)      dnf list updates -q 2>/dev/null | awk 'NR>1 {match($1, /^([^.]+)/, n); print n[1] "\t" $2}' ;;
+        pacman)   pacman -Qu 2>/dev/null | awk '{print $1 "\t" $4}' ;;
+        zypper)   zypper list-updates 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3); gsub(/ /,"",$5); print $3 "\t" $5}' ;;
+        apk)      apk version -u 2>/dev/null | sed -nE 's/^(.*)-([0-9].*) < (.*)/\1\t\3/p' ;;
     esac
 }
 
@@ -584,9 +584,16 @@ _internal_gen_list() {
         # Padding to prevent merge
         if (ver_info == "" || ver_info == (GREY RESET)) ver_info = " "
 
-        # Display [sym] pkg-name (tab) ver_info (tab) display (tab) magic_tag
+        # Dynamic Space Calculation for Visual Alignment using SPACES
+        # Target column: 50 chars
+        len = length(pkg) + 4
+        pad = 50 - len
+        if (pad < 1) pad = 1
+        padding = sprintf("%*s", pad, "")
+
+        # Display [sym] pkg-name (spaces) (tab) ver_info (tab) display (tab) magic_tag
         suffix = (search_tag != "" ? "\t" search_tag : "")
-        printf "%s\t%s%s %s%s\t\t\t%s\t%s%s%s\n", pkg, col, sym, pkg, rst, ver_info, display, rst, suffix
+        printf "%s\t%s%s %s%s%s\t%s\t%s%s%s\n", pkg, col, sym, pkg, rst, padding, ver_info, display, rst, suffix
     }
     ' "$pkg_file"
 }
@@ -658,7 +665,7 @@ EOF
         bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" "$INST_FILE" "$UPGR_FILE" "$SHOW_MODE" | \
         fzf --ansi --no-multi \
             --prompt="${BLUE}pmget> ${RESET}" \
-            --delimiter=$'\t+' \
+            --delimiter=$'\t' \
             --with-nth=2,3 \
             --header-lines=4 \
             --tiebreak=begin,index \
@@ -683,9 +690,9 @@ EOF
         # Handle Esc (exit code 130 or 1)
         if [[ $fzf_exit_code -ne 0 ]]; then
             # Calculate pending changes from state file
-            local n_inst=$(grep -c '=1$' "$STATE_FILE" 2>/dev/null)
-            local n_rem=$(grep -c '=2$' "$STATE_FILE" 2>/dev/null)
-            local n_upgr=$(grep -c '=3$' "$STATE_FILE" 2>/dev/null)
+            local n_inst=$(tr -d '\r' < "$STATE_FILE" 2>/dev/null | grep -c '=1$')
+            local n_rem=$(tr -d '\r' < "$STATE_FILE" 2>/dev/null | grep -c '=2$')
+            local n_upgr=$(tr -d '\r' < "$STATE_FILE" 2>/dev/null | grep -c '=3$')
 
             # If no changes pending, exit immediately
             if [[ "$n_inst" -eq 0 && "$n_rem" -eq 0 && "$n_upgr" -eq 0 ]]; then
@@ -726,9 +733,9 @@ EOF
             USE_SUDO=false
         fi
 
-        local inst=$(grep '=1$' "$STATE_FILE" 2>/dev/null | cut -d= -f1 | tr '\n' ' ')
-        local rem=$(grep '=2$' "$STATE_FILE" 2>/dev/null | cut -d= -f1 | tr '\n' ' ')
-        local upgr=$(grep '=3$' "$STATE_FILE" 2>/dev/null | cut -d= -f1 | tr '\n' ' ')
+        local inst=$(tr -d '\r' < "$STATE_FILE" 2>/dev/null | grep '=1$' | cut -d= -f1 | tr '\n' ' ')
+        local rem=$(tr -d '\r' < "$STATE_FILE" 2>/dev/null | grep '=2$' | cut -d= -f1 | tr '\n' ' ')
+        local upgr=$(tr -d '\r' < "$STATE_FILE" 2>/dev/null | grep '=3$' | cut -d= -f1 | tr '\n' ' ')
          
         if [[ -z "$inst" && -z "$rem" && -z "$upgr" ]]; then
              echo
