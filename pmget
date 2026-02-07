@@ -316,8 +316,8 @@ Maintained by: ${MAINTAINERS[*]}
 ${BOLD}Usage:${RESET}
   pmget                     Launch interactive TUI
   pmget -c [OPTIONS]        CLI mode
-  pmget -c [OPTIONS]        CLI mode
-  pmget --self-upgrade      Same as --self-install  pmget --self-install      Install/update pmget itself
+  pmget --self-upgrade      Check for updates and upgrade if available
+  pmget --self-install      Install/update pmget itself
 
 
 ${BOLD}Install pmget (one-liner):${RESET}
@@ -330,8 +330,7 @@ ${BOLD}Options:${RESET}
   -i PKG, --install PKG     Install packages (CLI mode)
   -r PKG, --remove PKG      Remove packages (CLI mode)
   --info PKG                Show package information
-  --info PKG                Show package informatioself
-  --nf-upgrade            Check for updates and upgrade i available
+  --self-upgrade            Check for updates and upgrade if available
   --self-install [OPTS]     Install/update pmget itself
       --local               Install to ~/.local/bin (default)
       --usr                 Install to /usr/local/bin
@@ -431,9 +430,9 @@ run_tui() {
     # Part 1: Static Variables (Unquoted Heredoc for Expansion)
     cat > "$HELPER_SCRIPT" <<EOF
 #!/usr/bin/env bash
-#!/usr/bin/env bash
 DETECTED_PM="$DETECTED_PM"
-VERSION="$VERSION"PM_PATH="$PM_PATH"
+VERSION="$VERSION"
+PM_PATH="$PM_PATH"
 
 
 
@@ -654,7 +653,7 @@ _internal_smart_reload() {
 case "$1" in
     gen-list)     _internal_gen_list "$2" "$3" "$4" "$5" "$6" "$7" ;;
     update-state) _internal_state_mod "$2" "$3" "$4" "$5" "$6" ;;
-    toggle-sudo)  _toggle_sudo "$2" ;;" ;;
+    toggle-sudo)  _toggle_sudo "$2" ;;
     get-prompt)
         ver_file="$2"
         r_ver=""
@@ -699,7 +698,6 @@ EOF
     fi
     tput civis 2>/dev/null || true
     
-    # TUI Loop with confirmation flows
     # TUI Loop with confirmation flows
     local fzf_exit_code=0
     
