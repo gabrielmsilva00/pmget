@@ -530,15 +530,15 @@ _internal_gen_list() {
         else if (s == "3") { sym = "[↑]"; col = BOLD CYAN }
         else if (is_upgr) { 
             sym = "[^]"; col = BOLD YELLOW 
-            ver_info = " " installed[pkg] " → " upgradeable[pkg]
+            ver_info = YELLOW installed[pkg] RESET " → " GREEN upgradeable[pkg] RESET
         }
         else if (is_inst) { 
             sym = "[✓]"; col = BOLD BLUE 
-            ver_info = " " installed[pkg]
+            ver_info = GREY installed[pkg] RESET
         }
         
-        # Display [sym] pkg-name ver_info
-        printf "%s\t%s%s %s%s%s\t%s%s\n", pkg, col, sym, pkg, ver_info, rst, display, rst
+        # Display [sym] pkg-name (tab) ver_info (tab) display
+        printf "%s\t%s%s %s%s\t%s\t%s%s\n", pkg, col, sym, pkg, rst, ver_info, display, rst
     }
     ' "$pkg_file"
 }
@@ -575,7 +575,7 @@ EOF
         fzf --ansi --no-multi \
             --prompt="${BLUE}pmget> ${RESET}" \
             --delimiter=$'\t' \
-            --with-nth=2 \
+            --with-nth=2,3 \
             --header-lines=4 \
             --tiebreak=begin,index \
             --preview="$cmd_preview" \
@@ -600,7 +600,7 @@ EOF
         if [[ $fzf_exit_code -ne 0 ]]; then
             echo
             echo "${YELLOW}Exit without changes?${RESET}"
-            echo -n "  Press ${BOLD}Enter${RESET} to return, ${BOLD}Esc${RESET} to exit: "
+            echo -n "  Press ${BOLD}Enter${RESET} to return, ${BOLD}any other key${RESET} to exit: "
             
             # Read single keypress
             local key
