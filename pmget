@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pmget - Package Manager Getter (https://github.com/gabrielmsilva00/pmget)
 
-VERSION="1.2.0"
+VERSION="1.2.1"
 
 # Colors
 BOLD=$(tput bold 2>/dev/null) || BOLD=""
@@ -454,8 +454,8 @@ _internal_state_mod() {
     
     # Determine package status
     local is_inst=0 is_upgr=0
-    awk -F'\t' -v p="$pkg" '$1==p{exit 0} END{exit 1}' "$inst_f" && is_inst=1
-    awk -F'\t' -v p="$pkg" '$1==p{exit 0} END{exit 1}' "$upgr_f" && is_upgr=1
+    awk -F'\t' -v p="$pkg" 'BEGIN{c=1} $1==p{c=0;exit} END{exit c}' "$inst_f" && is_inst=1
+    awk -F'\t' -v p="$pkg" 'BEGIN{c=1} $1==p{c=0;exit} END{exit c}' "$upgr_f" && is_upgr=1
     
     local n=0
     if [[ "$dir" == "next" || "$dir" == "toggle_or_select" ]]; then
