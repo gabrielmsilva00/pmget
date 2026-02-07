@@ -517,9 +517,12 @@ _internal_gen_list() {
     local upgr_file="$4"
     local filter_mode="${5:-ALL}"
     local search_tag="${6:-}"
+    local update_pkg="${7:-}"
+    local action="${8:-}"
     
     awk -v state_file="$state_file" -v inst_file="$inst_file" -v upgr_file="$upgr_file" \
-        -v filter_mode="$filter_mode" -v search_tag="$search_tag" '
+        -v filter_mode="$filter_mode" -v search_tag="$search_tag" \
+        -v update_pkg="$update_pkg" -v action="$action" '
     BEGIN {
         sudo_on = 0
         if (state_file != "") {
@@ -547,10 +550,53 @@ _internal_gen_list() {
             close(upgr_file)
         }
 
+        changed = 0
+        if (action == "toggle-sudo") {
+            sudo_on = !sudo_on
+            changed = 1
+        }
+        if (update_pkg != "" && action != "" && action != "toggle-sudo") {
+             pkg = update_pkg
+             s = state[pkg]; if (s == "") s = 0
+             is_inst = (pkg in installed)
+             is_upgr = (pkg in upgradeable)
+             
+             n = 0
+             if (action == "next" || action == "toggle_or_select") {
+                 if (is_inst == 0) {
+                     n = (s == 1 ? 0 : 1)
+                 } else if (is_upgr == 1) {
+                     if (s == 3) n = 2; else if (s == 2) n = 0; else n = 3;
+                 } else {
+                     n = (s == 2 ? 0 : 2)
+                 }
+             } else if (action == "prev") {
+                 if (is_inst == 0) {
+                     n = (s == 1 ? 0 : 1)
+                 } else if (is_upgr == 1) {
+                     if (s == 2) n = 3; else if (s == 3) n = 0; else n = 2;
+                 } else {
+                     n = (s == 2 ? 0 : 2)
+                 }
+             }
+             if (s != n) {
+                 state[pkg] = n
+                 changed = 1
+             }
+        }
+
+        if (changed) {
+            printf "__SUDO__=%s\n", (sudo_on ? "true" : "false") > state_file
+            for (p in state) {
+                if (state[p] != "" && state[p] != "0")
+                   printf "%s=%s\n", p, state[p] > state_file
+            }
+            close(state_file)
+        }
+
         GREEN="\033[32m"; RED="\033[31m"; YELLOW="\033[33m"; BLUE="\033[34m"; MAGENTA="\033[35m"
         CYAN="\033[36m"; GREY="\033[90m"; WHITE="\033[97m"; BOLD="\033[1m"; RESET="\033[0m"
         
-        # Header and Legends (first field is dummy for --with-nth=2)
         n_inst=0; n_rem=0; n_upgr=0
         for (p in state) {
             if (state[p] == "1") n_inst++
@@ -567,20 +613,15 @@ _internal_gen_list() {
         split($0, arr, "\t+")
         pkg = arr[1] 
         avail_ver = arr[2]
-        
-        # Description is the rest (Field 3+)
-        # If fetch_packages outputs 3 columns, arr[3] is description.
         display = arr[3]
         if (display == "") display = pkg
         if (avail_ver == " ") avail_ver = ""
         
         s = state[pkg]; is_inst = (pkg in installed); is_upgr = (pkg in upgradeable)
         
-        # Filtering
         if (filter_mode == "INSTALLED" && !is_inst) next
         if (filter_mode == "UPGRADEABLE" && !is_upgr) next
         
-        # Calculate Version Info independent of selection state
         ver_info = ""
         if (is_upgr) {
             ver_info = YELLOW installed[pkg] RESET " → " GREEN upgradeable[pkg] RESET
@@ -590,7 +631,6 @@ _internal_gen_list() {
             ver_info = GREY avail_ver RESET
         }
 
-        # Determine Symbol and Color
         sym = "[ ]"; col = RESET
         if (s == "1") { sym = "[+]"; col = BOLD GREEN }
         else if (s == "2") { sym = "[-]"; col = BOLD RED }
@@ -598,17 +638,13 @@ _internal_gen_list() {
         else if (is_upgr) { sym = "[^]"; col = BOLD YELLOW }
         else if (is_inst) { sym = "[✓]"; col = BOLD BLUE }
         
-        # Padding to prevent merge
         if (ver_info == "" || ver_info == (GREY RESET)) ver_info = " "
 
-        # Dynamic Space Calculation for Visual Alignment using SPACES
-        # Target column: 42 chars (Reduced from 50)
         len = length(pkg) + 4
         pad = 36 - len
         if (pad < 1) pad = 1
         padding = sprintf("%*s", pad, "")
 
-        # Display [sym] pkg-name (spaces) (tab) ver_info (tab) display (tab) magic_tag
         suffix = (search_tag != "" ? "\t" search_tag : "")
         printf "%s\t%s%s %s%s%s\t%s\t%s%s%s\n", pkg, col, sym, pkg, RESET, padding, ver_info, display, RESET, suffix
     }
@@ -650,9 +686,9 @@ _internal_smart_reload() {
 }
 
 case "$1" in
-    gen-list)     _internal_gen_list "$2" "$3" "$4" "$5" "$6" "$7" ;;
-    update-state) _internal_state_mod "$2" "$3" "$4" "$5" "$6" ;;
-    toggle-sudo)  _toggle_sudo "$2" ;;
+    gen-list)     _internal_gen_list "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" ;;
+    update-state) _internal_state_mod "$2" "$3" "$4" "$5" "$6" ;; # Legacy
+    toggle-sudo)  _toggle_sudo "$2" ;; # Legacy
     get-prompt)
         ver_file="$2"
         r_ver=""
@@ -685,9 +721,10 @@ EOF
     local helper_cmd="bash '$HELPER_SCRIPT'"
     
     local cmd_reload="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE'"
-    local cmd_update_next="$helper_cmd update-state '$STATE_FILE' '{1}' next '$INST_FILE' '$UPGR_FILE'"
-    local cmd_update_prev="$helper_cmd update-state '$STATE_FILE' '{1}' prev '$INST_FILE' '$UPGR_FILE'"
-    local cmd_toggle="$helper_cmd update-state '$STATE_FILE' '{1}' toggle_or_select '$INST_FILE' '$UPGR_FILE'"
+    local cmd_next="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '{1}' next"
+    local cmd_prev="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '{1}' prev"
+    local cmd_toggle="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '{1}' toggle_or_select"
+    local cmd_sudo="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '' toggle-sudo"
     local cmd_preview="$helper_cmd info '{1}'"
 
     # Enter Non-canonical mode to prevent escape sequence leakage (per user insight)
@@ -717,10 +754,10 @@ EOF
         --layout=reverse
         --info=inline
         --no-bold
-        --bind "right:reload($cmd_update_next && $cmd_reload)"
-        --bind "left:reload($cmd_update_prev && $cmd_reload)"
-        --bind "space:reload($cmd_toggle && $cmd_reload)"
-        --bind "tab:reload($helper_cmd toggle-sudo '$STATE_FILE' && $cmd_reload)"
+        --bind "right:reload($cmd_next)"
+        --bind "left:reload($cmd_prev)"
+        --bind "space:reload($cmd_toggle)"
+        --bind "tab:reload($cmd_sudo)"
         --bind "enter:accept"
     )
 
@@ -750,9 +787,9 @@ EOF
         if [[ $fzf_exit_code -ne 0 ]]; then
             # Calculate pending changes from state file
             local n_inst n_rem n_upgr
-            n_inst=$(grep -c '=1$' "$STATE_FILE" 2>/dev/null || echo 0)
-            n_rem=$(grep -c '=2$' "$STATE_FILE" 2>/dev/null || echo 0)
-            n_upgr=$(grep -c '=3$' "$STATE_FILE" 2>/dev/null || echo 0)
+            n_inst=$(grep -c '=1$' "$STATE_FILE" 2>/dev/null) || true; n_inst=${n_inst:-0}
+            n_rem=$(grep -c '=2$' "$STATE_FILE" 2>/dev/null)  || true; n_rem=${n_rem:-0}
+            n_upgr=$(grep -c '=3$' "$STATE_FILE" 2>/dev/null) || true; n_upgr=${n_upgr:-0}
 
             # If no changes pending, exit immediately
             if [[ "$n_inst" -eq 0 && "$n_rem" -eq 0 && "$n_upgr" -eq 0 ]]; then
