@@ -365,8 +365,8 @@ parse_args() {
             -i|--install) mode="i" ;;
             -r|--remove)  mode="r" ;;
             -v|--version) echo "pmget v${VERSION}"; exit 0 ;;
-            -h|--help)    |--self-upgradeshow_help; exit 0 ;;
-            --self-install) self_install "${@:2}"; exit 0 ;;
+            -h|--help)    show_help; exit 0 ;;
+            --self-install|--self-upgrade) self_install "${@:2}"; exit 0 ;;
             --info)       detect_pm; show_info "$2"; exit 0 ;;
             *) [[ "$mode" == "i" ]] && INSTALL_PKGS+=("$1"); [[ "$mode" == "r" ]] && REMOVE_PKGS+=("$1") ;;
         esac
