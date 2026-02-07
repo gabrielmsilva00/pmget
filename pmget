@@ -262,21 +262,21 @@ fetch_packages() {
 
 fetch_installed() {
     case "$DETECTED_PM" in
-        apt)      dpkg-query -W -f='${Package}\n' 2>/dev/null ;;
-        dnf)      rpm -qa --queryformat '%{NAME}\n' 2>/dev/null ;;
-        pacman)   pacman -Qq 2>/dev/null ;;
-        zypper)   rpm -qa --queryformat '%{NAME}\n' 2>/dev/null ;;
-        apk)      apk info -q 2>/dev/null ;;
+        apt)      dpkg-query -W -f='${Package}\t${Version}\n' 2>/dev/null ;;
+        dnf)      rpm -qa --queryformat '%{NAME}\t%{VERSION}-%{RELEASE}\n' 2>/dev/null ;;
+        pacman)   pacman -Q 2>/dev/null | sed 's/ /\t/' ;;
+        zypper)   rpm -qa --queryformat '%{NAME}\t%{VERSION}-%{RELEASE}\n' 2>/dev/null ;;
+        apk)      apk info -v 2>/dev/null | sed -E 's/(.*)-([0-9].*)/\1\t\2/' ;;
     esac
 }
 
 fetch_upgradeable() {
     case "$DETECTED_PM" in
-        apt)      apt list --upgradeable 2>/dev/null | grep '/' | cut -d/ -f1 ;;
-        dnf)      dnf list updates -q 2>/dev/null | awk 'NR>1{print $1}' | cut -d. -f1 ;;
-        pacman)   pacman -Quq 2>/dev/null ;;
-        zypper)   zypper list-updates 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3);print $3}' ;;
-        apk)      apk version -u -q 2>/dev/null | cut -d- -f1 ;;
+        apt)      apt list --upgradeable 2>/dev/null | awk -F/ 'NR>1 && /-/{split($0,a," "); print $1 "\t" a[2]}' ;;
+        dnf)      dnf list updates -q 2>/dev/null | awk 'NR>1 {match($1, /^([^.]+)/, n); print n[1] "\t" $2}' ;;
+        pacman)   pacman -Qu 2>/dev/null | awk '{print $1 "\t" $4}' ;;
+        zypper)   zypper list-updates 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3); gsub(/ /,"",$5); print $3 "\t" $5}' ;;
+        apk)      apk version -u 2>/dev/null | sed -nE 's/^(.*)-([0-9].*) < (.*)/\1\t\3/p' ;;
     esac
 }
 
@@ -432,8 +432,8 @@ _internal_state_mod() {
     
     # Determine package status
     local is_inst=0 is_upgr=0
-    grep -qxF "$pkg" "$inst_f" 2>/dev/null && is_inst=1
-    grep -qxF "$pkg" "$upgr_f" 2>/dev/null && is_upgr=1
+    awk -F'\t' -v p="$pkg" '$1==p{exit 0} END{exit 1}' "$inst_f" && is_inst=1
+    awk -F'\t' -v p="$pkg" '$1==p{exit 0} END{exit 1}' "$upgr_f" && is_upgr=1
     
     local n=0
     if [[ "$dir" == "next" || "$dir" == "toggle_or_select" ]]; then
@@ -488,11 +488,17 @@ _internal_gen_list() {
             close(state_file)
         }
         if (inst_file != "") {
-            while ((getline line < inst_file) > 0) installed[line] = 1
+            while ((getline line < inst_file) > 0) {
+                split(line, parts, "\t")
+                installed[parts[1]] = parts[2]
+            }
             close(inst_file)
         }
         if (upgr_file != "") {
-            while ((getline line < upgr_file) > 0) upgradeable[line] = 1
+            while ((getline line < upgr_file) > 0) {
+                split(line, parts, "\t")
+                upgradeable[parts[1]] = parts[2]
+            }
             close(upgr_file)
         }
 
@@ -515,18 +521,24 @@ _internal_gen_list() {
     {
         split($0, arr, "\t")
         pkg = arr[1]; display = (arr[2] == "" ? pkg : arr[2])
-        s = state[pkg]; is_inst = installed[pkg]; is_upgr = upgradeable[pkg]
+        s = state[pkg]; is_inst = (pkg in installed); is_upgr = (pkg in upgradeable)
         
-        sym = "[ ]"; col = RESET; rst = RESET
+        sym = "[ ]"; col = RESET; rst = RESET; ver_info = ""
         
         if (s == "1") { sym = "[+]"; col = BOLD GREEN }
         else if (s == "2") { sym = "[-]"; col = BOLD RED }
         else if (s == "3") { sym = "[↑]"; col = BOLD CYAN }
-        else if (is_upgr) { sym = "[^]"; col = BOLD YELLOW }
-        else if (is_inst) { sym = "[✓]"; col = BOLD BLUE }
+        else if (is_upgr) { 
+            sym = "[^]"; col = BOLD YELLOW 
+            ver_info = " " installed[pkg] " → " upgradeable[pkg]
+        }
+        else if (is_inst) { 
+            sym = "[✓]"; col = BOLD BLUE 
+            ver_info = " " installed[pkg]
+        }
         
-        # Display [sym] pkg-name (hide description, keep for search)
-        printf "%s\t%s%s %s%s\t%s%s\n", pkg, col, sym, pkg, rst, display, rst
+        # Display [sym] pkg-name ver_info
+        printf "%s\t%s%s %s%s%s\t%s%s\n", pkg, col, sym, pkg, ver_info, rst, display, rst
     }
     ' "$pkg_file"
 }
@@ -588,19 +600,14 @@ EOF
         if [[ $fzf_exit_code -ne 0 ]]; then
             echo
             echo "${YELLOW}Exit without changes?${RESET}"
-            echo -n "  Press ${BOLD}Enter${RESET} to confirm, ${BOLD}Esc${RESET} to go back: "
+            echo -n "  Press ${BOLD}Enter${RESET} to return, ${BOLD}Esc${RESET} to exit: "
             
             # Read single keypress
             local key
             read -rsn1 key
             
             if [[ -z "$key" ]]; then
-                # Enter pressed - exit without changes
-                echo
-                echo "${CYAN}Exited without changes.${RESET}"
-                return 0
-            else
-                # Any other key (including Esc) - go back to TUI
+                # Enter pressed - go back to TUI
                 echo
                 # Restore non-canonical mode for fzf
                 if [[ -t 0 ]]; then
@@ -608,6 +615,11 @@ EOF
                 fi
                 tput civis 2>/dev/null || true
                 continue
+            else
+                # Any other key (including Esc) - exit
+                echo
+                echo "${CYAN}Exited without changes.${RESET}"
+                return 0
             fi
         fi
         
