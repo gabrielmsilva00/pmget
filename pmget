@@ -494,18 +494,16 @@ _internal_gen_list() {
         }
         if (inst_file != "") {
             while ((getline line < inst_file) > 0) {
-            while ((getline line < inst_file) > 0) {
-                split(line, parts, "\t+")
-                val = parts[2]
+                split(line, parts, "\t")
+                val = parts[2]; if (val == "") val = parts[4]
                 installed[parts[1]] = val
             }
             close(inst_file)
         }
         if (upgr_file != "") {
             while ((getline line < upgr_file) > 0) {
-            while ((getline line < upgr_file) > 0) {
-                split(line, parts, "\t+")
-                val = parts[2]
+                split(line, parts, "\t")
+                val = parts[2]; if (val == "") val = parts[4]
                 upgradeable[parts[1]] = val
             }
             close(upgr_file)
@@ -528,9 +526,15 @@ _internal_gen_list() {
         printf "_\t%s%s  SYMBOLS: %s%s[ ] None  [✓] Inst [+] Add  [-] Rem  [↑] Upgr%s\n", BOLD, MAGENTA, RESET, WHITE, RESET
     }
     {
-        split($0, arr, "\t+")
+        split($0, arr, "\t")
         pkg = arr[1] 
-        val = arr[2]
+        val = ""
+        for (i=2; i<=length(arr); i++) {
+            if (arr[i] != "") {
+                val = arr[i]
+                break
+            }
+        }
         display = (val == "" ? pkg : val)
         
         s = state[pkg]; is_inst = (pkg in installed); is_upgr = (pkg in upgradeable)
