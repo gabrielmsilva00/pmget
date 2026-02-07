@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pmget - Package Manager Getter (https://github.com/gabrielmsilva00/pmget)
 
-VERSION="1.1.15"
+VERSION="1.1.16"
 
 # Colors
 BOLD=$(tput bold 2>/dev/null) || BOLD=""
@@ -707,7 +707,7 @@ EOF
             
             # Read single keypress
             local key
-            read -rsn1 key
+            read -rsn1 key < /dev/tty
             
             if [[ -z "$key" || "$key" == " " ]]; then
                 # Enter or Space pressed - go back to TUI
