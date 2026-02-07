@@ -501,7 +501,7 @@ _internal_gen_list() {
             close(upgr_file)
         }
 
-        GREEN="\033[32m"; RED="\033[31m"; YELLOW="\033[33m"; BLUE="\033[34m"
+        GREEN="\033[32m"; RED="\033[31m"; YELLOW="\033[33m"; BLUE="\033[34m"; MAGENTA="\033[35m"
         CYAN="\033[36m"; GREY="\033[90m"; WHITE="\033[97m"; BOLD="\033[1m"; RESET="\033[0m"
         
         # Header and Legends (first field is dummy for --with-nth=2)
@@ -512,10 +512,10 @@ _internal_gen_list() {
             else if (state[p] == "3") n_upgr++
         }
         
-        printf "_\t%s%s  SUDO: %s%s%s%s\n", BOLD, GREY, RESET, BOLD, (sudo_on ? GREEN "ON" : RED "OFF"), RESET
-        printf "_\t%s%s  SELECTED: %s%sInstall: %d | Remove: %d | Upgrade: %d%s\n", BOLD, GREY, RESET, WHITE, n_inst, n_rem, n_upgr, RESET
-        printf "_\t%s%s  KEYS: %s%s(Tab: Sudo | ←/→/Space: Cycle | Enter: Apply | Esc: Exit)%s\n", BOLD, GREY, RESET, WHITE, RESET
-        printf "_\t%s%s  SYMBOLS: %s%s[ ] None  [✓] Inst [+] Add  [-] Rem  [↑] Upgr%s\n", BOLD, GREY, RESET, WHITE, RESET
+        printf "_\t%s%s  SUDO: %s%s%s%s\n", BOLD, YELLOW, RESET, BOLD, (sudo_on ? GREEN "ON" : RED "OFF"), RESET
+        printf "_\t%s%s  SELECTED: %s%sInstall: %d | Remove: %d | Upgrade: %d%s\n", BOLD, BLUE, RESET, WHITE, n_inst, n_rem, n_upgr, RESET
+        printf "_\t%s%s  KEYS: %s%s(Tab: Sudo | ←/→/Space: Cycle | Enter: Apply | Esc: Exit)%s\n", BOLD, CYAN, RESET, WHITE, RESET
+        printf "_\t%s%s  SYMBOLS: %s%s[ ] None  [✓] Inst [+] Add  [-] Rem  [↑] Upgr%s\n", BOLD, MAGENTA, RESET, WHITE, RESET
     }
     {
         split($0, arr, "\t")
