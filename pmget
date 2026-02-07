@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pmget - Package Manager Getter (https://github.com/gabrielmsilva00/pmget)
 
-VERSION="1.1.10"
+VERSION="1.1.11"
 
 # Colors
 BOLD=$(tput bold 2>/dev/null) || BOLD=""
