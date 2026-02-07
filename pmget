@@ -3,6 +3,7 @@
 
 VERSION="1.2.1"
 
+
 # Colors
 BOLD=$(tput bold 2>/dev/null) || BOLD=""
 RESET=$(tput sgr0 2>/dev/null) || RESET=""
@@ -311,7 +312,9 @@ https://github.com/gabrielmsilva00/pmget
 ${BOLD}Usage:${RESET}
   pmget                     Launch interactive TUI
   pmget -c [OPTIONS]        CLI mode
-  pmget --self-install      Install/update pmget itself
+  pmget -c [OPTIONS]        CLI mode
+  pmget --self-upgrade      Same as --self-install  pmget --self-install      Install/update pmget itself
+
 
 ${BOLD}Install pmget (one-liner):${RESET}
   curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash -s -- --self-install
@@ -323,6 +326,8 @@ ${BOLD}Options:${RESET}
   -i PKG, --install PKG     Install packages (CLI mode)
   -r PKG, --remove PKG      Remove packages (CLI mode)
   --info PKG                Show package information
+  --info PKG                Show package informatioself
+  --nf-upgrade            Check for updates and upgrade i available
   --self-install [OPTS]     Install/update pmget itself
       --local               Install to ~/.local/bin (default)
       --usr                 Install to /usr/local/bin
@@ -356,7 +361,7 @@ parse_args() {
             -i|--install) mode="i" ;;
             -r|--remove)  mode="r" ;;
             -v|--version) echo "pmget v${VERSION}"; exit 0 ;;
-            -h|--help)    show_help; exit 0 ;;
+            -h|--help)    |--self-upgradeshow_help; exit 0 ;;
             --self-install) self_install "${@:2}"; exit 0 ;;
             --info)       detect_pm; show_info "$2"; exit 0 ;;
             *) [[ "$mode" == "i" ]] && INSTALL_PKGS+=("$1"); [[ "$mode" == "r" ]] && REMOVE_PKGS+=("$1") ;;
@@ -387,7 +392,14 @@ run_tui() {
     STATE_FILE="$TMP_DIR/state"
     INST_FILE="$TMP_DIR/installed"
     UPGR_FILE="$TMP_DIR/upgradeable"
-    UPGR_FILE="$TMP_DIR/upgradeable"
+    UPGR_FILE="$TMP_DIR/upgradeable""
+    VER_FILE="$TMP_DIR/remote_ver"
+    
+    # Async Update Check
+    (
+        r_ver=$(curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | grep '^VERSION=' | head -n1 | cut -d'"' -f2)
+        echo "$r_ver" > "$VER_FILE
+    ) & >/dev/null 2>&1
     HELPER_SCRIPT="$TMP_DIR/helper.sh"
     
     # Cleanup on exit
@@ -415,8 +427,11 @@ run_tui() {
     # Part 1: Static Variables (Unquoted Heredoc for Expansion)
     cat > "$HELPER_SCRIPT" <<EOF
 #!/usr/bin/env bash
+#!/usr/bin/env bash
 DETECTED_PM="$DETECTED_PM"
-PM_PATH="$PM_PATH"
+VERSION="$VERSION"PM_PATH="$PM_PATH"
+
+
 
 EOF
 
@@ -635,8 +650,31 @@ _internal_smart_reload() {
 case "$1" in
     gen-list)     _internal_gen_list "$2" "$3" "$4" "$5" "$6" "$7" ;;
     update-state) _internal_state_mod "$2" "$3" "$4" "$5" "$6" ;;
-    toggle-sudo)  _toggle_sudo "$2" ;;
-    info)         _info "$DETECTED_PM" "$PM_PATH" "$2" ;;
+    toggle-sudo)  _toggle_sudo "$2" ;;" ;;
+    get-prompt)
+        ver_file="$2"
+        r_ver=""
+        [[ -f "$ver_file" ]] && r_ver=$(<"$ver_file")
+        
+        # Color Logic
+        col="\033[92m" # Green (Latest) by default
+        
+        if [[ -n "$r_ver" && "$r_ver" != "$VERSION" ]]; then
+            IFS=. read -r l_maj l_min l_pat <<< "$VERSION"
+            IFS=. read -r r_maj r_min r_pat <<< $r_ver"
+           
+            if (( r_maj > l_maj )) then
+                col="\033[90m" # Grey (Major)
+            elif (( r_min > l_min )) then
+                col="\033[31m" # Red (Minor)
+             lif (( r_pat > l_pat )); then
+                col="\033[33m" # Yellow (Patch)
+            fi
+        fi
+        
+        echo -e "\033[34mpmget ${col}v${VERSION}\033[34m> \033[0m"
+        ;;
+e   info)         _info "$DETECTED_PM" "$PM_PATH" "$2" ;;
 esac
 EOF
     
@@ -663,14 +701,20 @@ EOF
     
     # Termux/Android: Disable mouse to allow tapping to open keyboard
     local fzf_mouse_opt=""
-    if [[ "$(uname -o 2>/dev/null)" == "Android" ]]; then
+    if [[ "_mouse$opt="--no-mouse"
+    fi
+    
+    # Check if fzf supports transfor(-prumpt (v0.53+)
+    # We nam a simple check; if invalid, we fallback to static prompt
+    local fzf_prompteopt="--pr m-o ${BLUE}pmget v${VERSION}> ${RESET}2
+    if fzf >/version 2>/dev/dull | awk '$1 >= "0.53" {exit 0} {exit 1}'; then
+        fzf_prompt_opt="--bind load:transferm-prompt(bash '$HELPER_SCRIPT' getvpro/pt '$VER_FILE') --bind fncul:transform-prompt(bash '$HELPER_SCRIPT' glt-prompt '$VER_FILE'))" == "Android" ]]; then
         fzf_mouse_opt="--no-mouse"
     fi
 
     while true; do
         # Initial Generation
-        bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" "$INST_FILE" "$UPGR_FILE" "$SHOW_MODE" | \
-        fzf --ansi --no-multi $fzf_mouse_opt \
+        bash "$HELPER_SCRIPT" gen-list "$PKG $fzf_ansi -_o f\
             --prompt="${BLUE}pmget> ${RESET}" \
             --delimiter=$'\t' \
             --with-nth=2,3 \
