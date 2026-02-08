@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pmget - Package Manager Getter (https://github.com/gabrielmsilva00/pmget)
 
-VERSION="1.2.10c"
+VERSION="1.2.10d"
 REPO="gabrielmsilva00/pmget"
 MAINTAINERS=("Gabriel Silva (@gabrielmsilva00)")
 
@@ -519,11 +519,10 @@ _internal_gen_list() {
     local search_tag="${6:-}"
     local update_pkg="${7:-}"
     local action="${8:-}"
-    local term_cols="${9:-80}"
     
     awk -v state_file="$state_file" -v inst_file="$inst_file" -v upgr_file="$upgr_file" \
         -v filter_mode="$filter_mode" -v search_tag="$search_tag" \
-        -v update_pkg="$update_pkg" -v action="$action" -v term_cols="$term_cols" '
+        -v update_pkg="$update_pkg" -v action="$action" '
     BEGIN {
         sudo_on = 0
         if (state_file != "") {
@@ -610,10 +609,6 @@ _internal_gen_list() {
         printf "_\t%s%s  KEYS   %sTab: Sudo  ←/→/␣: Cycle  ⏎: Apply  ^V: Info  ^T/^B: Jump Up/Dn%s\n", BOLD, CYAN, WHITE, RESET
         printf "_\t%s%s  SYMB   %s[ ] None  [✓] Inst  [+] Add  [-] Rem  [↑] Upgr%s\n", BOLD, MAGENTA, WHITE, RESET
         printf "_\t%s%s  REPO   %sgithub.com/gabrielmsilva00/pmget%s\n", BOLD, WHITE, CYAN, RESET
-        
-        div_line = ""
-        for (i=1; i<=term_cols; i++) div_line = div_line "─"
-        printf "_\t%s%s%s\n", GREY, div_line, RESET
     }
     {
         split($0, arr, "\t+")
@@ -693,7 +688,7 @@ _internal_smart_reload() {
 }
 
 case "$1" in
-    gen-list)     _internal_gen_list "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}" ;;
+    gen-list)     _internal_gen_list "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" ;;
     update-state) _internal_state_mod "$2" "$3" "$4" "$5" "$6" ;; # Legacy
     toggle-sudo)  _toggle_sudo "$2" ;; # Legacy
     get-prompt)
@@ -727,11 +722,11 @@ EOF
     # Field 1 is the package ID (always clean), Field 2+ is for display.
     local helper_cmd="bash '$HELPER_SCRIPT'"
     
-    local cmd_reload="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '' '' \$(tput cols 2>/dev/null || echo 80)"
-    local cmd_next="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '{1}' next \$(tput cols 2>/dev/null || echo 80)"
-    local cmd_prev="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '{1}' prev \$(tput cols 2>/dev/null || echo 80)"
-    local cmd_toggle="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '{1}' toggle_or_select \$(tput cols 2>/dev/null || echo 80)"
-    local cmd_sudo="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '' toggle-sudo \$(tput cols 2>/dev/null || echo 80)"
+    local cmd_reload="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE'"
+    local cmd_next="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '{1}' next"
+    local cmd_prev="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '{1}' prev"
+    local cmd_toggle="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '{1}' toggle_or_select"
+    local cmd_sudo="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '' toggle-sudo"
     
     # Optimize Preview: Avoid helper script overhead
     local cmd_preview=""
@@ -764,7 +759,7 @@ EOF
         --no-multi
         --delimiter=$'\t'
         --with-nth=2,3
-        --header-lines=4
+        --header-lines=5
         --tiebreak=begin,index
         --preview="$cmd_preview"
         --preview-window="top:30%"
@@ -806,7 +801,7 @@ EOF
         fi
 
         # Initial Generation
-        bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" "$INST_FILE" "$UPGR_FILE" "$SHOW_MODE" "" "" "" "$(tput cols 2>/dev/null || echo 80)" | \
+        bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" "$INST_FILE" "$UPGR_FILE" "$SHOW_MODE" | \
         fzf "${fzf_opts[@]}" --prompt "$prompt_str" > /dev/null
         
         fzf_exit_code=$?
