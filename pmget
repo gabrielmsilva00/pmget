@@ -718,8 +718,8 @@ _internal_gen_list() {
         
         printf "_\t%s%sSUDO %s%s%s\n", BOLD, YELLOW, (sudo_on ? GREEN "● ON" : RED "○ OFF"), RESET, BOLD
         printf "_\t%s%sCURR %s[+] %s%d  %s[-] %s%d  %s[↑] %s%d  %s[^] %s%d%s\n", BOLD, BLUE, GREEN, WHITE, n_inst, RED, WHITE, n_rem, CYAN, WHITE, n_upgr, YELLOW, WHITE, n_avail_upgr, RESET
-        printf "_\t%s%sKEYS %s↹  Toggle Sudo  ␣ Select Package  ⏎ Apply Changes%s\n", BOLD, CYAN, WHITE, RESET
-        printf "_\t%s%sCTRL %sV Toggle Info  T Jump Up  B Jump Down  U Upgrade All%s\n", BOLD, MAGENTA, WHITE, RESET
+        printf "_\t%s%sKEYS %s↹ Toggle Sudo  ␣ Select Package  ⏎ Apply Changes%s\n", BOLD, CYAN, WHITE, RESET
+        printf "_\t%s%sCTRL %sV Toggle Info  T First  B Last   U Upgrade All%s\n", BOLD, MAGENTA, WHITE, RESET
         printf "_\t%s%sREPO %sgithub.com/gabrielmsilva00/pmget%s\n", BOLD, WHITE, CYAN, RESET
     }
     {
