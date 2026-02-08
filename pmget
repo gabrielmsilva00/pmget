@@ -158,6 +158,7 @@ self_install() {
 
     echo
     echo "${WHITE}→${RESET} Performing initial system update..."
+    export PMGET_INSTALLING=true
     if [[ "$need_sudo" == true ]]; then
         "$install_dir/pmget" -s -u
     else
