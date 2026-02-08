@@ -193,6 +193,52 @@ self_install() {
     exit 0
 }
 
+perform_self_upgrade() {
+    echo "Checking for updates..."
+    local tmpfile
+    tmpfile=$(mktemp)
+    if ! curl -fsSL -H "Cache-Control: no-cache" "$PMGET_URL" -o "$tmpfile"; then
+        echo "${RED}Download failed${RESET}"
+        rm -f "$tmpfile"
+        exit 1
+    fi
+
+    if [[ ! -s "$tmpfile" ]] || ! grep -q "github.com/gabrielmsilva00/pmget" "$tmpfile"; then
+        echo "${RED}Download invalid or corrupted${RESET}"
+        rm -f "$tmpfile"
+        exit 1
+    fi
+
+    local new_ver
+    new_ver=$(grep "^VERSION=" "$tmpfile" | head -n 1 | cut -d'"' -f2)
+    
+    if [[ "$new_ver" == "$VERSION" ]]; then
+         echo "You are already on the latest version v${VERSION}."
+         rm -f "$tmpfile"
+         exit 0
+    fi
+    
+    echo "New version available: $new_ver (Current: $VERSION)"
+    echo "Upgrading..."
+    
+    # Detect install mode
+    local install_arg="--local"
+    local current_loc
+    current_loc=$(command -v pmget 2>/dev/null)
+    
+    if [[ "$current_loc" == "/usr/local/bin/pmget" ]]; then
+        install_arg="--usr"
+    elif [[ "$current_loc" == "/root/.local/bin/pmget" ]]; then
+        install_arg="--root"
+    fi
+    
+    chmod +x "$tmpfile"
+    "$tmpfile" --self-install "$install_arg"
+    local ret=$?
+    rm -f "$tmpfile"
+    exit $ret
+}
+
 # Detect if running from pipe (curl | bash) - auto-install mode
 # Skip if sentinel is set, or if -v/--version, -h/--help, --info is requested
 if [[ -z "$PMGET_INSTALLING" && ! -t 0 && "${BASH_SOURCE[0]}" == "${0}" ]]; then
@@ -365,7 +411,8 @@ parse_args() {
             -r|--remove)  mode="r" ;;
             -v|--version) echo "pmget v${VERSION}"; exit 0 ;;
             -h|--help)    show_help; exit 0 ;;
-            --self-install|--self-upgrade) self_install "${@:2}"; exit 0 ;;
+            --self-install) self_install "${@:2}"; exit 0 ;;
+            --self-upgrade) perform_self_upgrade; exit 0 ;;
             --info)       detect_pm; show_info "$2"; exit 0 ;;
             *) [[ "$mode" == "i" ]] && INSTALL_PKGS+=("$1"); [[ "$mode" == "r" ]] && REMOVE_PKGS+=("$1") ;;
         esac
