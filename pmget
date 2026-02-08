@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # pmget - Package Manager Getter (https://github.com/gabrielmsilva00/pmget)
-VERSION="1.3.4f"
+VERSION="1.3.4g"
 REPO="gabrielmsilva00/pmget"
 LICENSE="Apache-2.0"
 MAINTAINERS=("Gabriel Silva (@gabrielmsilva00)")
