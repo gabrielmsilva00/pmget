@@ -14,9 +14,9 @@ This won't install the application, it will just run it.
 Installing, removing and upgrading packages through this method is not possible; Consulting available packages is.
 To install, remove or upgrade packages, proceed to the install section below.
 
-## Install
+## Install | Update
 
-You can also install this with a simple single-line command:
+You can install or update `pmget` with a simple single-line command:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash -s -- --self-install
@@ -35,7 +35,11 @@ curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | 
 
 **Requires:** `bash`, `curl`, `fzf` and one of: `apt`, `dnf`, `pacman`, `zypper`, `apk`.
 
-To update, re-run the install command or use `pmget --self-install`.
+Alternatively, if you already have `pmget` installed, you can update it by running:
+
+```bash
+pmget --self-upgrade
+```
 
 ## Usage
 
@@ -45,7 +49,8 @@ pmget -s                 # TUI with sudo
 pmget -c -i vim htop     # CLI: install packages
 pmget -c -r nano         # CLI: remove packages
 pmget --info curl        # Show package info
-pmget --self-install     # Update pmget itself
+pmget --self-install     # Install pmget itself into PATH
+pmget --self-upgrade     # Upgrade pmget itself
 ```
 
 ## Options

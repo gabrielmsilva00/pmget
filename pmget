@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pmget - Package Manager Getter (https://github.com/gabrielmsilva00/pmget)
 
-VERSION="1.2.11a"
+VERSION="1.3.0"
 REPO="gabrielmsilva00/pmget"
 MAINTAINERS=("Gabriel Silva (@gabrielmsilva00)")
 
@@ -604,11 +604,11 @@ _internal_gen_list() {
             else if (state[p] == "3") n_upgr++
         }
         
-        printf "_\t%s%s  SUDO   %s%s%s\n", BOLD, YELLOW, (sudo_on ? GREEN "● ON" : RED "○ OFF"), RESET, BOLD
-        printf "_\t%s%s  CURR   %s[+] %s%d  %s[-] %s%d  %s[↑] %s%d%s\n", BOLD, BLUE, GREEN, WHITE, n_inst, RED, WHITE, n_rem, BLUE, WHITE, n_upgr, RESET
-        printf "_\t%s%s  KEYS   %sTab: Sudo  ←/→/␣: Cycle  ⏎: Apply  ^V: Info  ^T/^B: Jump Up/Dn%s\n", BOLD, CYAN, WHITE, RESET
-        printf "_\t%s%s  SYMB   %s[ ] None  [✓] Inst  [+] Add  [-] Rem  [↑] Upgr%s\n", BOLD, MAGENTA, WHITE, RESET
-        printf "_\t%s%s  REPO   %sgithub.com/gabrielmsilva00/pmget%s\n", BOLD, WHITE, CYAN, RESET
+        printf "_\t%s%sSUDO %s%s%s\n", BOLD, YELLOW, (sudo_on ? GREEN "● ON" : RED "○ OFF"), RESET, BOLD
+        printf "_\t%s%sCURR %s[+] %s%d  %s[-] %s%d  %s[↑] %s%d%s\n", BOLD, BLUE, GREEN, WHITE, n_inst, RED, WHITE, n_rem, BLUE, WHITE, n_upgr, RESET
+        printf "_\t%s%sKEYS %s↹ Sudo  ␣ Cycle  ⏎ Apply  ^V Info  ^T Jump↑  ^B Jump↓ %s\n", BOLD, CYAN, WHITE, RESET
+        printf "_\t%s%sSYMB %s[ ] None  [✓] Inst  [+] Add  [-] Rem  [↑] Upgr%s\n", BOLD, MAGENTA, WHITE, RESET
+        printf "_\t%s%sREPO %sgithub.com/gabrielmsilva00/pmget%s\n", BOLD, WHITE, CYAN, RESET
     }
     {
         split($0, arr, "\t+")
