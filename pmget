@@ -16,7 +16,36 @@ CYAN=$(tput setaf 6 2>/dev/null) || CYAN=""
 WHITE=$(tput setaf 7 2>/dev/null) || WHITE=""
 
 # ============================================================================
-# SELF-INSTALLATION MODE
+# CONFIGURATION & CONSTANTS
+# ============================================================================
+
+# Global Command Variables (can be overridden by config)
+PMGET_PM=""
+PMGET_FETCH_CMD=""
+PMGET_INSTALLED_CMD=""
+PMGET_UPGRADEABLE_CMD=""
+PMGET_INSTALL_CMD=""
+PMGET_REMOVE_CMD=""
+PMGET_UPDATE_CMD=""
+PMGET_INFO_CMD=""
+PMGET_CLEAN_CMD=""
+
+load_config() {
+    local config_files=("$HOME/.config/pmget/config" "$HOME/.pmgetrc")
+    for f in "${config_files[@]}"; do
+        if [[ -f "$f" ]]; then
+            # Source key=value pairs, ignoring comments
+            # We filter for specific keys to avoid arbitrary code execution if possible,
+            # but since we want full command flexibility, sourcing is the most robust way
+            # providing the user controls the file.
+            source "$f"
+        fi
+    done
+}
+
+# Load config immediately
+load_config
+
 # When piped or run with --install, pmget installs itself
 # Usage: curl -fsSL <url>/pmget | bash [-s -- OPTIONS]
 # ============================================================================
@@ -282,121 +311,241 @@ cleanup() {
 trap cleanup EXIT INT
 
 detect_pm() {
-    [[ -n "$DETECTED_PM" ]] && return 0
+    # If PMGET_PM is already set (e.g. from config), use it and populate commands if they are missing (and if it's a known PM)
+    if [[ -n "$PMGET_PM" ]]; then
+        DETECTED_PM="$PMGET_PM"
+        PM_PATH=$(command -v "$DETECTED_PM" 2>/dev/null) || true
+        # If commands are not set, try to populate them for known PMs
+        if [[ -z "$PMGET_FETCH_CMD" ]]; then
+             _populate_commands "$DETECTED_PM"
+        fi
+        return 0
+    fi
+
+    # Auto-detection
     for pm in nala apt dnf pacman zypper apk; do
         if command -v "$pm" &>/dev/null; then
             DETECTED_PM="$pm"
+            PMGET_PM="$pm"
             PM_PATH=$(command -v "$pm")
+            _populate_commands "$pm"
             return 0
         fi
     done
     echo "${RED}Error: No supported package manager found (nala/apt/dnf/pacman/zypper/apk).${RESET}" >&2
+    echo "Please set PMGET_PM in ~/.config/pmget/config or use --change-pm" >&2
     exit 1
+}
+
+_populate_commands() {
+    local pm="$1"
+    case "$pm" in
+        nala|apt)
+            PMGET_FETCH_CMD="apt-cache search . --full 2>/dev/null | awk -v RS='' -v FS='\n' '{n=\"\"; v=\"\"; d=\"\"; for(i=1;i<=NF;i++) {if(\$i~/^Package: /) n=substr(\$i,10); else if(\$i~/^Version: /) v=substr(\$i,10); else if(\$i~/^Description: /) d=substr(\$i,14)} if(n!=\"\") {if(v==\"\") v=\" \"; print n \"\t\" v \"\t\" d}}' | sort -u -k1,1"
+            PMGET_INSTALLED_CMD="dpkg-query -W -f='\${Package}\t\${Version}\n' 2>/dev/null"
+            PMGET_UPGRADEABLE_CMD="apt list --upgradeable 2>/dev/null | awk -F/ 'NR>1 && /-/{split(\$0,a,\" \"); print \$1 \"\t\" a[2]}'"
+            PMGET_INSTALL_CMD="$pm install -y"
+            PMGET_REMOVE_CMD="$pm remove -y"
+            PMGET_UPDATE_CMD="$pm update"
+            PMGET_CLEAN_CMD="$pm clean"
+            PMGET_INFO_CMD="apt-cache show {PKG} 2>/dev/null | grep -Ev '^(Section:|Priority:|Installed|Essential:|SHA1:|SHA256:|SHA512:|MD5sum:|Description-md5:|Filename:|Size:|Task:)'"
+            [[ "$pm" == "nala" ]] && PMGET_CLEAN_CMD="$pm clean" # nala might default to apt clean valid
+            ;;
+        dnf)
+            PMGET_FETCH_CMD="dnf repoquery --qf '%{name}\t%{version}-%{release}\t%{summary}' 2>/dev/null"
+            PMGET_INSTALLED_CMD="rpm -qa --queryformat '%{NAME}\t%{VERSION}-%{RELEASE}\n' 2>/dev/null"
+            PMGET_UPGRADEABLE_CMD="dnf list updates -q 2>/dev/null | awk 'NR>1 {match(\$1, /^([^.]+)/, n); print n[1] \"\t\" \$2}'"
+            PMGET_INSTALL_CMD="dnf install -y"
+            PMGET_REMOVE_CMD="dnf remove -y"
+            PMGET_UPDATE_CMD="dnf makecache"
+            PMGET_CLEAN_CMD="dnf clean all"
+            PMGET_INFO_CMD="dnf info {PKG} 2>/dev/null"
+            ;;
+        pacman)
+            PMGET_FETCH_CMD="pacman -Sl 2>/dev/null | awk '{print \$2 \"\t\" \$3 \"\t\" \$2}'"
+            PMGET_INSTALLED_CMD="pacman -Q 2>/dev/null | sed 's/ /\t/'"
+            PMGET_UPGRADEABLE_CMD="pacman -Qu 2>/dev/null | awk '{print \$1 \"\t\" \$4}'"
+            PMGET_INSTALL_CMD="pacman -S --noconfirm"
+            PMGET_REMOVE_CMD="pacman -R --noconfirm"
+            PMGET_UPDATE_CMD="pacman -Sy"
+            PMGET_CLEAN_CMD="pacman -Sc --noconfirm"
+            PMGET_INFO_CMD="pacman -Si {PKG} 2>/dev/null || pacman -Qi {PKG} 2>/dev/null"
+            ;;
+        zypper)
+            PMGET_FETCH_CMD="zypper packages 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,\"\",\$3); gsub(/ /,\"\",\$4); print \$3 \"\t\" \$4 \"\t\" \$3}'"
+            PMGET_INSTALLED_CMD="rpm -qa --queryformat '%{NAME}\t%{VERSION}-%{RELEASE}\n' 2>/dev/null"
+            PMGET_UPGRADEABLE_CMD="zypper list-updates 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,\"\",\$3); gsub(/ /,\"\",\$5); print \$3 \"\t\" \$5}'"
+            PMGET_INSTALL_CMD="zypper install -y"
+            PMGET_REMOVE_CMD="zypper remove -y"
+            PMGET_UPDATE_CMD="zypper refresh"
+            PMGET_CLEAN_CMD="zypper clean -a"
+            PMGET_INFO_CMD="zypper info {PKG} 2>/dev/null"
+            ;;
+        apk)
+            PMGET_FETCH_CMD="apk search -v 2>/dev/null | sed -E 's/^(.*)-([0-9].*) - (.*)$/\1\t\2\t\3/' | sed -E 's/^([^ ]+)-([0-9][^ ]*)$/\1\t\2\t/'"
+            PMGET_INSTALLED_CMD="apk info -v 2>/dev/null | sed -E 's/(.*)-([0-9].*)/\1\t\2/'"
+            PMGET_UPGRADEABLE_CMD="apk version -u 2>/dev/null | sed -nE 's/^(.*)-([0-9].*) < (.*)/\1\t\3/p'"
+            PMGET_INSTALL_CMD="apk add"
+            PMGET_REMOVE_CMD="apk del"
+            PMGET_UPDATE_CMD="apk update"
+            PMGET_CLEAN_CMD="apk cache clean"
+            PMGET_INFO_CMD="apk info -a {PKG} 2>/dev/null"
+            ;;
+    esac
 }
 
 update_cache() {
     detect_pm
     echo -e "${BOLD}${BLUE}Updating package manager cache...${RESET}"
-    local cmd=()
-    [[ "$USE_SUDO" == true || $EUID -eq 0 ]] && cmd+=(sudo)
     
-    case "$DETECTED_PM" in
-        nala|apt)
-            echo -e "${WHITE}→${RESET} Cleaning and updating ${DETECTED_PM}..."
-            "${cmd[@]}" "$DETECTED_PM" clean 2>/dev/null || true
-            "${cmd[@]}" "$DETECTED_PM" update
-            ;;
-        dnf)
-            echo -e "${WHITE}→${RESET} Cleaning and updating dnf..."
-            "${cmd[@]}" dnf clean all
-            "${cmd[@]}" dnf makecache
-            ;;
-        pacman)
-            echo -e "${WHITE}→${RESET} Cleaning and updating pacman..."
-            "${cmd[@]}" pacman -Sc --noconfirm
-            "${cmd[@]}" pacman -Sy
-            ;;
-        zypper)
-            echo -e "${WHITE}→${RESET} Cleaning and updating zypper..."
-            "${cmd[@]}" zypper clean -a
-            "${cmd[@]}" zypper refresh
-            ;;
-        apk)
-            echo -e "${WHITE}→${RESET} Cleaning and updating apk..."
-            "${cmd[@]}" apk cache clean
-            "${cmd[@]}" apk update
-            ;;
-    esac
+    # Construct command
+    local cmd_str="$PMGET_CLEAN_CMD; $PMGET_UPDATE_CMD"
+    
+    # Prepend sudo if needed
+    if [[ "$USE_SUDO" == true || $EUID -eq 0 ]]; then
+        # This is tricky with compound commands. We might need to run each separately with sudo.
+        # But we can try running the whole string in a subshell with sudo bash -c
+        echo -e "${WHITE}→${RESET} Running update with sudo..."
+        sudo bash -c "$cmd_str"
+    else
+        echo -e "${WHITE}→${RESET} Running update..."
+        eval "$cmd_str"
+    fi
 }
 
 run_pm() {
-    local action="$1"; shift; local cmd=()
-    [[ "$USE_SUDO" == true ]] && cmd+=(sudo)
-    case "$DETECTED_PM:$action" in
-        nala:install|apt:install)    cmd+=("$DETECTED_PM" install -y "$@") ;;
-        nala:remove|apt:remove)     cmd+=("$DETECTED_PM" remove -y "$@") ;;
-        dnf:install)    cmd+=(dnf install -y "$@") ;;
-        dnf:remove)     cmd+=(dnf remove -y "$@") ;;
-        pacman:install) cmd+=(pacman -S --noconfirm "$@") ;;
-        pacman:remove)  cmd+=(pacman -R --noconfirm "$@") ;;
-        zypper:install) cmd+=(zypper install -y "$@") ;;
-        zypper:remove)  cmd+=(zypper remove -y "$@") ;;
-        apk:install)    cmd+=(apk add "$@") ;;
-        apk:remove)     cmd+=(apk del "$@") ;;
+    local action="$1"; shift
+    local pkgs="$*"
+    local cmd_template=""
+    
+    case "$action" in
+        install) cmd_template="$PMGET_INSTALL_CMD" ;;
+        remove)  cmd_template="$PMGET_REMOVE_CMD" ;;
     esac
-    "${cmd[@]}"
+    
+    if [[ -z "$cmd_template" ]]; then
+        echo "${RED}Error: Unknown action $action${RESET}"
+        return 1
+    fi
+    
+    local full_cmd="$cmd_template $pkgs"
+    
+    if [[ "$USE_SUDO" == true ]]; then
+        sudo bash -c "$full_cmd"
+    else
+        eval "$full_cmd"
+    fi
 }
 
 fetch_packages() {
-    case "$DETECTED_PM" in
-        nala|apt)      apt-cache search . --full 2>/dev/null | awk -v RS='' -v FS='\n' '{
-                      n=""; v=""; d=""
-                      for(i=1;i<=NF;i++) {
-                          if($i~/^Package: /) n=substr($i,10)
-                          else if($i~/^Version: /) v=substr($i,10)
-                          else if($i~/^Description: /) d=substr($i,14)
-                      }
-                      if(n!="") {
-                          if(v=="") v=" "
-                          print n "\t" v "\t" d
-                      }
-                  }' | sort -u -k1,1 ;;
-        dnf)      dnf repoquery --qf '%{name}\t%{version}-%{release}\t%{summary}' 2>/dev/null ;;
-        pacman)   pacman -Sl 2>/dev/null | awk '{print $2 "\t" $3 "\t" $2}' ;;
-        zypper)   zypper packages 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3); gsub(/ /,"",$4); print $3 "\t" $4 "\t" $3}' ;;
-        apk)      apk search -v 2>/dev/null | sed -E 's/^(.*)-([0-9].*) - (.*)$/\1\t\2\t\3/' | sed -E 's/^([^ ]+)-([0-9][^ ]*)$/\1\t\2\t/' ;;
-    esac
+    eval "$PMGET_FETCH_CMD"
 }
 
 fetch_installed() {
-    case "$DETECTED_PM" in
-        nala|apt)      dpkg-query -W -f='${Package}\t${Version}\n' 2>/dev/null ;;
-        dnf)      rpm -qa --queryformat '%{NAME}\t%{VERSION}-%{RELEASE}\n' 2>/dev/null ;;
-        pacman)   pacman -Q 2>/dev/null | sed 's/ /\t/' ;;
-        zypper)   rpm -qa --queryformat '%{NAME}\t%{VERSION}-%{RELEASE}\n' 2>/dev/null ;;
-        apk)      apk info -v 2>/dev/null | sed -E 's/(.*)-([0-9].*)/\1\t\2/' ;;
-    esac
+    eval "$PMGET_INSTALLED_CMD"
 }
 
 fetch_upgradeable() {
-    case "$DETECTED_PM" in
-        nala|apt)      apt list --upgradeable 2>/dev/null | awk -F/ 'NR>1 && /-/{split($0,a," "); print $1 "\t" a[2]}' ;;
-        dnf)      dnf list updates -q 2>/dev/null | awk 'NR>1 {match($1, /^([^.]+)/, n); print n[1] "\t" $2}' ;;
-        pacman)   pacman -Qu 2>/dev/null | awk '{print $1 "\t" $4}' ;;
-        zypper)   zypper list-updates 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3); gsub(/ /,"",$5); print $3 "\t" $5}' ;;
-        apk)      apk version -u 2>/dev/null | sed -nE 's/^(.*)-([0-9].*) < (.*)/\1\t\3/p' ;;
-    esac
+    eval "$PMGET_UPGRADEABLE_CMD"
 }
 
 show_info() {
     echo -e "${BOLD}${CYAN}Package Info:${RESET}\n"
-    case "$DETECTED_PM" in
-        nala|apt)      apt-cache show "$1" 2>/dev/null | grep -Ev '^(Section:|Priority:|Installed|Essential:|SHA1:|SHA256:|SHA512:|MD5sum:|Description-md5:|Filename:|Size:|Task:)' ;;
-        dnf)      dnf info "$1" 2>/dev/null ;;
-        pacman)   pacman -Si "$1" 2>/dev/null || pacman -Qi "$1" 2>/dev/null ;;
-        zypper)   zypper info "$1" 2>/dev/null ;;
-        apk)      apk info -a "$1" 2>/dev/null ;;
+    local pkg="$1"
+    # Replace {PKG} placeholder
+    local cmd="${PMGET_INFO_CMD//\{PKG\}/$pkg}"
+    eval "$cmd"
+}
+
+change_pm_interactive() {
+    echo -e "${BOLD}${BLUE}Package Manager Configuration Quiz${RESET}"
+    echo "This utility will guide you through setting up a package manager for pmget."
+    echo
+    
+    # 1. Ask for PM Binary
+    local chosen_pm=""
+    echo "Which package manager do you want to use?"
+    echo "  1) apt"
+    echo "  2) nala"
+    echo "  3) dnf"
+    echo "  4) pacman"
+    echo "  5) zypper"
+    echo "  6) apk"
+    echo "  7) Custom / Other"
+    echo
+    read -rp "Select [1-7]: " selection
+    
+    case "$selection" in
+        1) chosen_pm="apt" ;;
+        2) chosen_pm="nala" ;;
+        3) chosen_pm="dnf" ;;
+        4) chosen_pm="pacman" ;;
+        5) chosen_pm="zypper" ;;
+        6) chosen_pm="apk" ;;
+        *) chosen_pm="custom" ;;
     esac
+    
+    local config_content=""
+    
+    if [[ "$chosen_pm" != "custom" ]]; then
+        echo -e "\n${GREEN}Selected: $chosen_pm${RESET}"
+        config_content="PMGET_PM=\"$chosen_pm\""
+        # We don't need to save commands for built-ins as they are auto-populated if only PMGET_PM is set
+    else
+        echo -e "\n${BOLD}Custom Package Manager Setup${RESET}"
+        read -rp "Enter binary name (e.g. 'npm', 'pip', 'cargo'): " custom_bin
+        
+        if [[ -z "$custom_bin" ]]; then
+             echo "${RED}Error: Binary name required.${RESET}"
+             exit 1
+        fi
+        
+        echo -e "\n${YELLOW}Please enter the full commands for the following actions.${RESET}"
+        echo "${YELLOW}Use {PKG} as a placeholder for the package name where applicable.${RESET}"
+        echo
+        
+        # Helper to read with default prompt
+        _ask() { read -rp "$1: " val; echo "$val"; }
+        
+        cmd_fetch=$(_ask "Command to LIST ALL packages (Name\tVersion\tDescription)")
+        cmd_inst=$(_ask "Command to LIST INSTALLED packages (Name\tVersion)")
+        cmd_upgr=$(_ask "Command to LIST UPGRADEABLE packages (Name\tVersion)")
+        cmd_install=$(_ask "Command to INSTALL a package")
+        cmd_remove=$(_ask "Command to REMOVE a package")
+        cmd_update=$(_ask "Command to UPDATE cache")
+        cmd_clean=$(_ask "Command to CLEAN cache")
+        cmd_info=$(_ask "Command to SHOW INFO for a package ({PKG})")
+        
+        # Escape double quotes for saving to config
+        cmd_fetch=${cmd_fetch//\"/\\\"}
+        cmd_inst=${cmd_inst//\"/\\\"}
+        cmd_upgr=${cmd_upgr//\"/\\\"}
+        cmd_install=${cmd_install//\"/\\\"}
+        cmd_remove=${cmd_remove//\"/\\\"}
+        cmd_update=${cmd_update//\"/\\\"}
+        cmd_clean=${cmd_clean//\"/\\\"}
+        cmd_info=${cmd_info//\"/\\\"}
+
+        config_content="PMGET_PM=\"$custom_bin\"
+PMGET_FETCH_CMD=\"$cmd_fetch\"
+PMGET_INSTALLED_CMD=\"$cmd_inst\"
+PMGET_UPGRADEABLE_CMD=\"$cmd_upgr\"
+PMGET_INSTALL_CMD=\"$cmd_install\"
+PMGET_REMOVE_CMD=\"$cmd_remove\"
+PMGET_UPDATE_CMD=\"$cmd_update\"
+PMGET_CLEAN_CMD=\"$cmd_clean\"
+PMGET_INFO_CMD=\"$cmd_info\""
+    fi
+    
+    # Save to config
+    local config_dir="$HOME/.config/pmget"
+    mkdir -p "$config_dir"
+    echo "$config_content" > "$config_dir/config"
+    
+    echo
+    echo -e "${GREEN}✓ Configuration saved to $config_dir/config${RESET}"
+    echo "You can edit this file manually at any time."
+    exit 0
 }
 
 show_help() {
@@ -428,6 +577,7 @@ ${BOLD}Options:${RESET}
       --local               Install to ~/.local/bin (default)
       --usr                 Install to /usr/local/bin
       --root                Install to /root/.local/bin
+  --change-pm               Interactively configure package manager
   -v, --version             Show version
   -h, --help                Show this help
 
@@ -461,6 +611,7 @@ parse_args() {
             -h|--help)    show_help; exit 0 ;;
             --self-install) self_install "${@:2}"; exit 0 ;;
             --self-upgrade) perform_self_upgrade; exit 0 ;;
+            --change-pm)  change_pm_interactive; exit 0 ;;
             --info)       detect_pm; show_info "$2"; exit 0 ;;
             *) [[ "$mode" == "i" ]] && INSTALL_PKGS+=("$1"); [[ "$mode" == "r" ]] && REMOVE_PKGS+=("$1") ;;
         esac
@@ -594,15 +745,11 @@ _info() {
     local pm_name="$1"
     local pm_path="$2"
     local pkg="$3"
+    local info_cmd="$4"
     echo -e "\033[1m\033[34mPackage Information:\033[0m\n"
     
-    case "$pm_name" in
-        nala|apt)    apt-cache show "$pkg" 2>/dev/null | grep -Ev '^(Section:|Priority:|Installed|Essential:|SHA1:|SHA256:|SHA512:|MD5sum:|Description-md5:|Filename:|Size:|Task:)' ;;
-        dnf)    "$pm_path" info "$pkg" 2>/dev/null ;;
-        pacman) "$pm_path" -Si "$pkg" 2>/dev/null || "$pm_path" -Qi "$pkg" 2>/dev/null ;;
-        zypper) "$pm_path" info "$pkg" 2>/dev/null ;;
-        apk)    "$pm_path" info -a "$pkg" 2>/dev/null ;;
-    esac
+    local cmd="${info_cmd//\{PKG\}/$pkg}"
+    eval "$cmd"
 }
 
 _internal_gen_list() {
@@ -848,7 +995,7 @@ case "$1" in
         
         echo -e "\033[34mpmget ${col}v${VERSION}\033[34m> \033[0m"
         ;;
-    info)         _info "$DETECTED_PM" "$PM_PATH" "$2" ;;
+    info)         _info "$DETECTED_PM" "$PM_PATH" "$2" "$3" ;;
 esac
 EOF
     
@@ -865,13 +1012,9 @@ EOF
     # Optimize Preview: Avoid helper script overhead
     local cmd_preview=""
     local title_cmd="echo -e \"\033[1m\033[34mPackage Information:\033[0m\n\""
-    case "$DETECTED_PM" in
-        nala|apt)    cmd_preview="$title_cmd; apt-cache show {1} 2>/dev/null | grep -Ev '^(Section:|Priority:|Installed|Essential:|SHA1:|SHA256:|SHA512:|MD5sum:|Description-md5:|Filename:|Size:|Task:)'" ;;
-        dnf)    cmd_preview="$title_cmd; dnf info {1} 2>/dev/null" ;;
-        pacman) cmd_preview="$title_cmd; $PM_PATH -Si {1} 2>/dev/null || $PM_PATH -Qi {1} 2>/dev/null" ;;
-        zypper) cmd_preview="$title_cmd; zypper info {1} 2>/dev/null" ;;
-        apk)    cmd_preview="$title_cmd; apk info -a {1} 2>/dev/null" ;;
-    esac
+    # Use global command variable for info and replace {PKG} with {1} (fzf placeholder)
+    local info_cmd_fzf="${PMGET_INFO_CMD//\{PKG\}/{1}}"
+    cmd_preview="$title_cmd; $info_cmd_fzf"
 
     # Enter Non-canonical mode to prevent escape sequence leakage (per user insight)
     if [[ -t 0 ]]; then
