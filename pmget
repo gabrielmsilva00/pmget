@@ -653,7 +653,7 @@ _internal_gen_list() {
         
         printf "_\t%s%sSUDO %s%s%s\n", BOLD, YELLOW, (sudo_on ? GREEN "● ON" : RED "○ OFF"), RESET, BOLD
         printf "_\t%s%sCURR %s[+] %s%d  %s[-] %s%d  %s[↑] %s%d%s\n", BOLD, BLUE, GREEN, WHITE, n_inst, RED, WHITE, n_rem, BLUE, WHITE, n_upgr, RESET
-        printf "_\t%s%sKEYS %s↹ Sudo  ␣ Cycle  ⏎ Apply  ^V Info  ^T Top  ^B End %s\n", BOLD, CYAN, WHITE, RESET
+        printf "_\t%s%sKEYS %s↹ Sudo  ␣ Cycle  ⏎ Apply  ^V Info  ^T Jump↑  ^B Jump↓ %s\n", BOLD, CYAN, WHITE, RESET
         printf "_\t%s%sSYMB %s[ ] None  [✓] Inst  [+] Add  [-] Rem  [↑] Upgr%s\n", BOLD, MAGENTA, WHITE, RESET
         printf "_\t%s%sREPO %sgithub.com/gabrielmsilva00/pmget%s\n", BOLD, WHITE, CYAN, RESET
     }
