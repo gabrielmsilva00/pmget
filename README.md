@@ -31,8 +31,7 @@ curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | 
 curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash -s -- --self-install --root    # /root/.local/bin (requires sudo)
 ```
 
-**Requires:** `fzf` and one of: `apt`, `dnf`, `pacman`, `zypper`, `apk`.
-Dependencies can be met at install time.
+**Requires:** `bash`, `curl`, `fzf` and one of: `apt`, `dnf`, `pacman`, `zypper`, `apk`.
 
 To update, re-run the install command or use `pmget --self-install`.
 
