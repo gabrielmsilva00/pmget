@@ -4,13 +4,15 @@
 
 ## Test
 
-You can test the application right now by running the following command:
+You can test the TUI application right now by running the following command:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash
 ```
 
 This won't install the application, it will just run it.
+Installing, removing and upgrading packages through this method is not possible; Consulting available packages is.
+To install, remove or upgrade packages, proceed to the install section below.
 
 ## Install
 

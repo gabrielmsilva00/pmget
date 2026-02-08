@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pmget - Package Manager Getter (https://github.com/gabrielmsilva00/pmget)
 
-VERSION="1.2.10d"
+VERSION="1.2.11a"
 REPO="gabrielmsilva00/pmget"
 MAINTAINERS=("Gabriel Silva (@gabrielmsilva00)")
 
@@ -272,7 +272,7 @@ fetch_packages() {
         dnf)      dnf repoquery --qf '%{name}\t%{version}-%{release}\t%{summary}' 2>/dev/null ;;
         pacman)   pacman -Sl 2>/dev/null | awk '{print $2 "\t" $3 "\t" $2}' ;;
         zypper)   zypper packages 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3); gsub(/ /,"",$4); print $3 "\t" $4 "\t" $3}' ;;
-        apk)      apk search -v 2>/dev/null | sed -E 's/(.*)-([0-9].*)/\1\t\2\t\1/' ;;
+        apk)      apk search -v 2>/dev/null | sed -E 's/^(.*)-([0-9].*) - (.*)$/\1\t\2\t\3/' | sed -E 's/^([^ ]+)-([0-9][^ ]*)$/\1\t\2\t/' ;;
     esac
 }
 
@@ -623,13 +623,27 @@ _internal_gen_list() {
         if (filter_mode == "INSTALLED" && !is_inst) next
         if (filter_mode == "UPGRADEABLE" && !is_upgr) next
         
+        # Truncate Name
+        pkg_disp = pkg
+        if (length(pkg) > 30) pkg_disp = substr(pkg, 1, 30)
+
+        # Truncate Version Components
+        v_inst = installed[pkg]
+        v_upgr = upgradeable[pkg]
+        v_avail = avail_ver
+        
+        # Helper truncate function logic inline
+        if (length(v_inst) > 20) v_inst = substr(v_inst, 1, 20)
+        if (length(v_upgr) > 20) v_upgr = substr(v_upgr, 1, 20)
+        if (length(v_avail) > 20) v_avail = substr(v_avail, 1, 20)
+
         ver_info = ""
         if (is_upgr) {
-            ver_info = YELLOW installed[pkg] RESET " → " GREEN upgradeable[pkg] RESET
+            ver_info = YELLOW v_inst RESET " → " GREEN v_upgr RESET
         } else if (is_inst) {
-            ver_info = WHITE installed[pkg] RESET
+            ver_info = WHITE v_inst RESET
         } else {
-            ver_info = GREY avail_ver RESET
+            ver_info = GREY v_avail RESET
         }
 
         sym = "[ ]"; col = RESET
@@ -641,14 +655,39 @@ _internal_gen_list() {
         
         if (ver_info == "" || ver_info == (GREY RESET)) ver_info = " "
 
-        len = length(pkg) + 4
-        pad = 36 - len
-        if (pad < 1) pad = 1
-        padding = ""
-        for (i=0; i<pad; i++) padding = padding " "
+        # Name Padding (Field 2)
+        # Visual length = 3 (sym) + 1 (space) + length(pkg_disp)
+        vis_len_name = 4 + length(pkg_disp)
+        pad_name = 36 - vis_len_name
+        if (pad_name < 1) pad_name = 1
+        padding_name = ""
+        for (i=0; i<pad_name; i++) padding_name = padding_name " "
+        
+        # Version Padding (Field 3)
+        # We need to pad field 3 so field 4 (description) aligns
+        # Visual length of version is tricky due to colors.
+        # But we know the CONTENT length.
+        # If is_upgr: len = len(v_inst) + 3 (" → ") + len(v_upgr)
+        # Else: len = len(v_current)
+        
+        content_len_ver = 0
+        if (is_upgr) content_len_ver = length(v_inst) + 3 + length(v_upgr)
+        else if (is_inst) content_len_ver = length(v_inst)
+        else content_len_ver = length(v_avail)
+        
+        pad_ver = 25 - content_len_ver
+        if (pad_ver < 1) pad_ver = 1
+        padding_ver = ""
+        for (i=0; i<pad_ver; i++) padding_ver = padding_ver " "
 
         suffix = (search_tag != "" ? "\t" search_tag : "")
-        printf "%s\t%s%s %s%s%s\t%s\t%s%s%s\n", pkg, col, sym, pkg, RESET, padding, ver_info, display, RESET, suffix
+        
+        # Field 1: pkg (ID)
+        # Field 2: Name Col
+        # Field 3: Version Col + Padding
+        # Field 4: Description
+        
+        printf "%s\t%s%s %s%s%s\t%s%s\t%s%s%s\n", pkg, col, sym, pkg_disp, RESET, padding_name, ver_info, padding_ver, display, RESET, suffix
     }
     ' "$pkg_file"
 }
@@ -758,7 +797,7 @@ EOF
         --ansi
         --no-multi
         --delimiter=$'\t'
-        --with-nth=2,3
+        --with-nth=2,3,4
         --header-lines=5
         --tiebreak=begin,index
         --preview="$cmd_preview"
@@ -766,6 +805,7 @@ EOF
         --layout=reverse
         --info=inline
         --no-bold
+        --no-hscroll
         --bind "right:reload($cmd_next)"
         --bind "left:reload($cmd_prev)"
         --bind "space:reload($cmd_toggle)"
