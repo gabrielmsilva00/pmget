@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # pmget - Package Manager Getter (https://github.com/gabrielmsilva00/pmget)
-VERSION="1.3.4"
+VERSION="1.3.4b"
 REPO="gabrielmsilva00/pmget"
 LICENSE="Apache-2.0"
 MAINTAINERS=("Gabriel Silva (@gabrielmsilva00)")
@@ -681,6 +681,24 @@ _internal_gen_list() {
             }
             close(state_file)
         }
+        
+        if (action == "upgrade-all") {
+             for (p in upgradeable) {
+                 s = state[p]
+                 if (s != "3") {
+                     state[p] = "3"
+                     changed = 1
+                 }
+             }
+             if (changed) {
+                printf "__SUDO__=%s\n", (sudo_on ? "true" : "false") > state_file
+                for (p in state) {
+                    if (state[p] != "" && state[p] != "0")
+                       printf "%s=%s\n", p, state[p] > state_file
+                }
+                close(state_file)
+             }
+        }
 
         GREEN="\033[32m"; RED="\033[31m"; YELLOW="\033[33m"; BLUE="\033[34m"; MAGENTA="\033[35m"
         CYAN="\033[36m"; GREY="\033[90m"; WHITE="\033[97m"; BOLD="\033[1m"; RESET="\033[0m"
@@ -692,9 +710,14 @@ _internal_gen_list() {
             else if (state[p] == "3") n_upgr++
         }
         
+        n_avail_upgr=0
+        for (p in upgradeable) {
+            if (state[p] != "3") n_avail_upgr++
+        }
+        
         printf "_\t%s%sSUDO %s%s%s\n", BOLD, YELLOW, (sudo_on ? GREEN "● ON" : RED "○ OFF"), RESET, BOLD
-        printf "_\t%s%sCURR %s[+] %s%d  %s[-] %s%d  %s[↑] %s%d%s\n", BOLD, BLUE, GREEN, WHITE, n_inst, RED, WHITE, n_rem, BLUE, WHITE, n_upgr, RESET
-        printf "_\t%s%sKEYS %s↹ Sudo  ␣ Cycle  ⏎ Apply  ^V Info  ^T Jump↑  ^B Jump↓ %s\n", BOLD, CYAN, WHITE, RESET
+        printf "_\t%s%sCURR %s[+] %s%d  %s[-] %s%d  %s[↑] %s%d  %s[^] %s%d%s\n", BOLD, BLUE, GREEN, WHITE, n_inst, RED, WHITE, n_rem, CYAN, WHITE, n_upgr, YELLOW, WHITE, n_avail_upgr, RESET
+        printf "_\t%s%sKEYS %s↹ Sudo  ␣ Cycle  ⏎ Apply  ^V Info  ^T Jump↑  ^B Jump↓  ^U UpgrAll %s\n", BOLD, CYAN, WHITE, RESET
         printf "_\t%s%sSYMB %s[ ] None  [✓] Inst  [+] Add  [-] Rem  [↑] Upgr%s\n", BOLD, MAGENTA, WHITE, RESET
         printf "_\t%s%sREPO %sgithub.com/gabrielmsilva00/pmget%s\n", BOLD, WHITE, CYAN, RESET
     }
@@ -851,6 +874,7 @@ EOF
     local cmd_prev="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '{1}' prev"
     local cmd_toggle="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '{1}' toggle_or_select"
     local cmd_sudo="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '' toggle-sudo"
+    local cmd_upgr_all="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '' upgrade-all"
     
     local cmd_preview=""
     local title_cmd="echo -e \"\033[1m\033[34mPackage Information:\033[0m\n\""
@@ -895,6 +919,7 @@ EOF
         --bind "ctrl-t:first,alt-t:first"
         --bind "ctrl-b:last,alt-b:last"
         --bind "enter:accept"
+        --bind "ctrl-u:reload($cmd_upgr_all),alt-u:reload($cmd_upgr_all)"
     )
 
     if [[ -n "$fzf_mouse_opt" ]]; then
