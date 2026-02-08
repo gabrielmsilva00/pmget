@@ -19,7 +19,18 @@ You can install `pmget` with a single command:
 curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash -s -- --self-install
 ```
 
-This will install `pmget` to `~/.local/bin` and add it to your PATH if necessary.
+This will install `pmget` to `~/.local/bin`, detech and fetch an updated cache of your package manager, and run the application.
+For alternative install locations you can:
+
+> Append `--usr` to install to `/usr/local/bin`
+```bash
+curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash -s -- --self-install --usr
+```
+
+> Append `--root` to install to `/root/.local/bin`
+```bash
+curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash -s -- --self-install --root
+```
 
 ### Manual Installation
 
