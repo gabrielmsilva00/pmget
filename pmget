@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # pmget - Package Manager Getter (https://github.com/gabrielmsilva00/pmget)
-
-VERSION="1.3.2"
+VERSION="1.3.3"
 REPO="gabrielmsilva00/pmget"
+LICENSE="Apache-2.0"
 MAINTAINERS=("Gabriel Silva (@gabrielmsilva00)")
 
-# Colors
+
 BOLD=$(tput bold 2>/dev/null) || BOLD=""
 RESET=$(tput sgr0 2>/dev/null) || RESET=""
 RED=$(tput setaf 1 2>/dev/null) || RED=""
@@ -15,11 +15,7 @@ BLUE=$(tput setaf 4 2>/dev/null) || BLUE=""
 CYAN=$(tput setaf 6 2>/dev/null) || CYAN=""
 WHITE=$(tput setaf 7 2>/dev/null) || WHITE=""
 
-# ============================================================================
-# SELF-INSTALLATION MODE
-# When piped or run with --install, pmget installs itself
-# Usage: curl -fsSL <url>/pmget | bash [-s -- OPTIONS]
-# ============================================================================
+# Section: Self-Installation Logic
 
 PMGET_URL="https://raw.githubusercontent.com/${REPO}/main/pmget"
 
@@ -29,7 +25,6 @@ self_install() {
     local install_dir=""
     local missing_deps=()
 
-    # Parse install arguments
     for arg in "$@"; do
         case "$arg" in
             --root|--usr|--local)
@@ -50,7 +45,6 @@ self_install() {
         esac
     done
 
-    # Set install directory based on mode
     case "${install_mode:-local}" in
         local) install_dir="$HOME/.local/bin" ;;
         usr)   install_dir="/usr/local/bin"; need_sudo=true ;;
@@ -58,13 +52,14 @@ self_install() {
     esac
 
     echo "${BOLD}${BLUE}pmget installer${RESET}"
-    echo "${BLUE}Target:${RESET} $install_dir"
-    echo "${BLUE}Repo:${RESET}   https://github.com/$REPO"
-    echo "${BLUE}Devs:${RESET}   ${MAINTAINERS[*]}"
+    echo "${BLUE}Target:${RESET}     $install_dir"
+    echo "${BLUE}Repo:${RESET}       https://github.com/$REPO"
+    echo "${BLUE}Devs:${RESET}       ${MAINTAINERS[*]}"
+    echo "${BLUE}License:${RESET}     $LICENSE"
+    echo "${BLUE}Disclaimer:${RESET} This application was heavily inspired by the Hydra0xetc/Search project."
+    echo "            You can check their work at https://github.com/Hydra0xetc/Search"
     echo
 
-    # Check for existing pmget installation
-    local existing_pmget
     existing_pmget=$(command -v pmget 2>/dev/null) || true
     if [[ -n "$existing_pmget" ]]; then
         if grep -q "github.com/gabrielmsilva00/pmget" "$existing_pmget" 2>/dev/null; then
@@ -96,17 +91,15 @@ self_install() {
         echo
     fi
 
-    # Check dependencies
     command -v curl &>/dev/null && echo "${GREEN}✓${RESET} curl" || { echo "${RED}✗${RESET} curl (required)"; missing_deps+=("curl"); }
     command -v fzf &>/dev/null && echo "${GREEN}✓${RESET} fzf" || { echo "${RED}✗${RESET} fzf (required)"; missing_deps+=("fzf"); }
 
     local pm_found=""
-    for p in pkg nala apt dpkg dnf yum pacman zypper apk; do
+    for p in nala pkg apt dpkg dnf yum pacman zypper apk; do
         command -v "$p" &>/dev/null && { pm_found="$p"; echo "${GREEN}✓${RESET} $p"; break; }
     done
-    [[ -z "$pm_found" ]] && { echo "${RED}✗${RESET} package manager (pkg/nala/apt/dpkg/dnf/yum/pacman/zypper/apk)"; missing_deps+=("package-manager"); }
+    [[ -z "$pm_found" ]] && { echo "${RED}✗${RESET} package manager (nala/pkg/apt/dpkg/dnf/yum/pacman/zypper/apk)"; missing_deps+=("package-manager"); }
 
-    # Exit if missing dependencies
     if [[ ${#missing_deps[@]} -gt 0 ]]; then
         echo
         echo "${RED}Missing dependencies:${RESET} ${missing_deps[*]}"
@@ -116,7 +109,6 @@ self_install() {
 
     echo
 
-    # Download pmget first (before attempting any directory operations)
     local tmpfile
     tmpfile=$(mktemp)
     if ! curl -fsSL -H "Cache-Control: no-cache" "$PMGET_URL" -o "$tmpfile"; then
@@ -125,18 +117,15 @@ self_install() {
         exit 1
     fi
 
-    # Verify download
     if [[ ! -s "$tmpfile" ]] || ! grep -q "github.com/gabrielmsilva00/pmget" "$tmpfile"; then
         echo "${RED}Download invalid or corrupted${RESET}"
         rm -f "$tmpfile"
         exit 1
     fi
 
-    # Try to create directory and install
     local install_success=false
 
     if [[ "$need_sudo" == true ]]; then
-        # Try with sudo first
         echo "${WHITE}→${RESET} Attempting install with sudo..."
         if sudo mkdir -p "$install_dir" 2>/dev/null && \
            sudo cp "$tmpfile" "$install_dir/pmget" 2>/dev/null && \
@@ -149,7 +138,6 @@ self_install() {
     fi
 
     if [[ "$install_success" == false ]]; then
-        # Try without sudo (either as fallback or default)
         if mkdir -p "$install_dir" 2>/dev/null && \
            mv "$tmpfile" "$install_dir/pmget" 2>/dev/null && \
            chmod +x "$install_dir/pmget" 2>/dev/null; then
@@ -157,7 +145,6 @@ self_install() {
         fi
     fi
 
-    # Clean up temp file if still exists
     rm -f "$tmpfile" 2>/dev/null
 
     if [[ "$install_success" == false ]]; then
@@ -169,7 +156,6 @@ self_install() {
 
     echo "${GREEN}✓${RESET} pmget v${VERSION} installed to $install_dir/pmget"
 
-    # Run initial update (per user request)
     echo
     echo "${WHITE}→${RESET} Performing initial system update..."
     if [[ "$need_sudo" == true ]]; then
@@ -178,7 +164,6 @@ self_install() {
         "$install_dir/pmget" -u
     fi
 
-    # Add to PATH if needed
     if [[ "$need_sudo" == false && ":$PATH:" != *":$install_dir:"* ]]; then
         local shell_name shell_rc
         shell_name=$(basename "$SHELL")
@@ -201,6 +186,8 @@ self_install() {
     echo -e "\n${GREEN}Done!${RESET} Run: pmget"
     exit 0
 }
+
+# Section: Self-Upgrade Logic
 
 perform_self_upgrade() {
     echo "Checking for updates..."
@@ -230,7 +217,6 @@ perform_self_upgrade() {
     echo "New version available: $new_ver (Current: $VERSION)"
     echo "Upgrading..."
     
-    # Detect install mode
     local install_arg="--local"
     local current_loc
     current_loc=$(command -v pmget 2>/dev/null)
@@ -248,8 +234,7 @@ perform_self_upgrade() {
     exit $ret
 }
 
-# Detect if running from pipe (curl | bash) - auto-install mode
-# Skip if sentinel is set, or if -v/--version, -h/--help, --info is requested
+
 if [[ -z "$PMGET_INSTALLING" && ! -t 0 && "${BASH_SOURCE[0]}" == "${0}" ]]; then
     local skip_install=false
     for arg in "$@"; do
@@ -260,9 +245,7 @@ if [[ -z "$PMGET_INSTALLING" && ! -t 0 && "${BASH_SOURCE[0]}" == "${0}" ]]; then
     [[ "$skip_install" == false ]] && self_install "$@"
 fi
 
-# ============================================================================
-# NORMAL PMGET OPERATION
-# ============================================================================
+# Section: Constants & Cleanup
 
 CLI_MODE=false
 USE_SUDO=false
@@ -281,6 +264,8 @@ cleanup() {
 }
 trap cleanup EXIT INT
 
+# Section: Package Manager Detection
+
 detect_pm() {
     [[ -n "$DETECTED_PM" ]] && return 0
     for pm in nala apt dnf pacman zypper apk; do
@@ -293,6 +278,8 @@ detect_pm() {
     echo "${RED}Error: No supported package manager found (nala/apt/dnf/pacman/zypper/apk).${RESET}" >&2
     exit 1
 }
+
+# Section: Cache Management
 
 update_cache() {
     detect_pm
@@ -329,6 +316,8 @@ update_cache() {
     esac
 }
 
+# Section: Package Manager Wrapper
+
 run_pm() {
     local action="$1"; shift; local cmd=()
     [[ "$USE_SUDO" == true ]] && cmd+=(sudo)
@@ -346,6 +335,8 @@ run_pm() {
     esac
     "${cmd[@]}"
 }
+
+# Section: Package Query Functions
 
 fetch_packages() {
     case "$DETECTED_PM" in
@@ -388,6 +379,8 @@ fetch_upgradeable() {
     esac
 }
 
+# Section: Information Display
+
 show_info() {
     echo -e "${BOLD}${CYAN}Package Info:${RESET}\n"
     case "$DETECTED_PM" in
@@ -399,18 +392,23 @@ show_info() {
     esac
 }
 
+# Section: Help & Usage
+
 show_help() {
     cat <<EOF
 ${BOLD}${BLUE}pmget${RESET} v${VERSION} - Package Manager Getter
 https://github.com/$REPO
 Maintained by: ${MAINTAINERS[*]}
+Licensed under: $LICENSE
+
+This application was heavily inspired by the Hydra0xetc/Search project.
+You can check their work at https://github.com/Hydra0xetc/Search
 
 ${BOLD}Usage:${RESET}
   pmget                     Launch interactive TUI
   pmget -c [OPTIONS]        CLI mode
   pmget --self-upgrade      Check for updates and upgrade if available
   pmget --self-install      Install/update pmget itself
-
 
 ${BOLD}Install pmget (one-liner):${RESET}
   curl -fsSL https://raw.githubusercontent.com/${REPO}/main/pmget | bash -s -- --self-install
@@ -440,6 +438,8 @@ ${BOLD}Examples:${RESET}
 EOF
 }
 
+# Section: Argument Parsing
+
 parse_args() {
     local mode=""
     while [[ $# -gt 0 ]]; do
@@ -468,6 +468,8 @@ parse_args() {
     done
 }
 
+# Section: CLI Mode Execution
+
 run_cli() {
     echo "${BOLD}${BLUE}pmget${RESET} (${DETECTED_PM})$([[ "$USE_SUDO" == true ]] && echo " [sudo]")"
     local rc=0
@@ -477,14 +479,11 @@ run_cli() {
     exit $rc
 }
 
-# ----------------------------------------------------
-# TUI Logic
-# ----------------------------------------------------
+# Section: TUI Logic Initialization
 
 run_tui() {
     echo -n "${WHITE}Loading packages...${RESET} "
     
-    # Create a temp dir for all artifacts
     TMP_DIR=$(mktemp -d)
     PKG_FILE="$TMP_DIR/packages"
     STATE_FILE="$TMP_DIR/state"
@@ -492,17 +491,14 @@ run_tui() {
     UPGR_FILE="$TMP_DIR/upgradeable"
     VER_FILE="$TMP_DIR/remote_ver"
     
-    # Async Update Check
     (
         r_ver=$(curl -fsSL https://raw.githubusercontent.com/${REPO}/main/pmget | grep '^VERSION=' | head -n1 | cut -d'"' -f2)
         echo "$r_ver" > "$VER_FILE"
     ) & >/dev/null 2>&1
     HELPER_SCRIPT="$TMP_DIR/helper.sh"
     
-    # Cleanup on exit
     trap "rm -rf '$TMP_DIR'; [[ -n \"${st_orig:-}\" ]] && stty \"\$st_orig\" 2>/dev/null; tput cnorm 2>/dev/null || true" EXIT INT
     
-    # Sudo Auto-Detection (per user request)
     if [[ $EUID -eq 0 || "$USE_SUDO" == true ]]; then
         USE_SUDO=true
         echo "__SUDO__=true" >> "$STATE_FILE"
@@ -520,19 +516,16 @@ run_tui() {
     fi
     echo " ${GREEN}OK${RESET} ($(wc -l < "$PKG_FILE" | tr -d ' ') items)"
 
-    # Generate Helper Script
-    # Part 1: Static Variables (Unquoted Heredoc for Expansion)
+    # Section: TUI Helper Script Generation
+
     cat > "$HELPER_SCRIPT" <<EOF
 #!/usr/bin/env bash
 DETECTED_PM="$DETECTED_PM"
 VERSION="$VERSION"
 PM_PATH="$PM_PATH"
 
-
-
 EOF
 
-    # Part 2: Functions and Logic (Quoted Heredoc to protect awk/regex)
     cat >> "$HELPER_SCRIPT" <<'EOF'
 
 _get_state() {
@@ -823,15 +816,14 @@ _internal_smart_reload() {
 
 case "$1" in
     gen-list)     _internal_gen_list "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" ;;
-    update-state) _internal_state_mod "$2" "$3" "$4" "$5" "$6" ;; # Legacy
-    toggle-sudo)  _toggle_sudo "$2" ;; # Legacy
+    update-state) _internal_state_mod "$2" "$3" "$4" "$5" "$6" ;;
+    toggle-sudo)  _toggle_sudo "$2" ;;
     get-prompt)
         ver_file="$2"
         r_ver=""
         [[ -f "$ver_file" ]] && r_ver=$(<"$ver_file")
         
-        # Color Logic
-        col="\033[92m" # Green (Latest) by default
+        col="\033[92m"
         
         if [[ -n "$r_ver" && "$r_ver" != "$VERSION" ]]; then
             IFS=. read -r l_maj l_min l_pat <<< "$VERSION"
@@ -852,8 +844,6 @@ case "$1" in
 esac
 EOF
     
-    # Define Commands using bash to execute the helper script
-    # Field 1 is the package ID (always clean), Field 2+ is for display.
     local helper_cmd="bash '$HELPER_SCRIPT'"
     
     local cmd_reload="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE'"
@@ -862,7 +852,6 @@ EOF
     local cmd_toggle="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '{1}' toggle_or_select"
     local cmd_sudo="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '' toggle-sudo"
     
-    # Optimize Preview: Avoid helper script overhead
     local cmd_preview=""
     local title_cmd="echo -e \"\033[1m\033[34mPackage Information:\033[0m\n\""
     case "$DETECTED_PM" in
@@ -873,17 +862,14 @@ EOF
         apk)    cmd_preview="$title_cmd; apk info -a {1} 2>/dev/null" ;;
     esac
 
-    # Enter Non-canonical mode to prevent escape sequence leakage (per user insight)
     if [[ -t 0 ]]; then
         st_orig=$(stty -g)
         stty -icanon -echo
     fi
     tput civis 2>/dev/null || true
     
-    # TUI Loop with confirmation flows
     local fzf_exit_code=0
     
-    # Termux/Android: Disable mouse to allow tapping to open keyboard
     local fzf_mouse_opt=""
     if [[ "$(uname -o 2>/dev/null)" == "Android" ]]; then
         fzf_mouse_opt="--no-mouse"
@@ -915,45 +901,39 @@ EOF
         fzf_opts+=("$fzf_mouse_opt")
     fi
 
-
+    # Section: TUI Main Loop & FZF Integration
 
     while true; do
-        # Calculate prompt color once per loop iteration
         local prompt_str="v${VERSION} ${BLUE}pmget> ${RESET}"
         if [[ -f "$VER_FILE" ]]; then
             local r_ver
             r_ver=$(<"$VER_FILE")
             if [[ -n "$r_ver" && "$r_ver" != "$VERSION" ]]; then
-                 local col="\033[92m" # Green (Latest) by default
+                 local col="\033[92m"
                  IFS=. read -r l_maj l_min l_pat <<< "$VERSION"
                  IFS=. read -r r_maj r_min r_pat <<< "$r_ver"
-                 if (( r_maj > l_maj )); then col="\033[90m"; # Grey (Major)
-                 elif (( r_min > l_min )); then col="\033[31m"; # Red (Minor)
-                 elif (( r_pat > l_pat )); then col="\033[33m"; # Yellow (Patch)
+                 if (( r_maj > l_maj )); then col="\033[90m";
+                 elif (( r_min > l_min )); then col="\033[31m";
+                 elif (( r_pat > l_pat )); then col="\033[33m";
                  fi
                  prompt_str="${BLUE}pmget ${col}v${VERSION}${BLUE}> ${RESET}"
             fi
         fi
 
-        # Initial Generation
         bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" "$INST_FILE" "$UPGR_FILE" "$SHOW_MODE" | \
         fzf "${fzf_opts[@]}" --prompt "$prompt_str" > /dev/null
         
         fzf_exit_code=$?
         
-        # Reset terminal temporarily for prompts
         [[ -n "${st_orig:-}" ]] && stty "$st_orig" 2>/dev/null || true
         tput cnorm 2>/dev/null || true
         
-        # Handle Esc (exit code 130 or 1)
         if [[ $fzf_exit_code -ne 0 ]]; then
-            # Calculate pending changes from state file
             local n_inst n_rem n_upgr
             n_inst=$(grep -c '=1$' "$STATE_FILE" 2>/dev/null) || true; n_inst=${n_inst:-0}
             n_rem=$(grep -c '=2$' "$STATE_FILE" 2>/dev/null)  || true; n_rem=${n_rem:-0}
             n_upgr=$(grep -c '=3$' "$STATE_FILE" 2>/dev/null) || true; n_upgr=${n_upgr:-0}
 
-            # If no changes pending, exit immediately
             if [[ "$n_inst" -eq 0 && "$n_rem" -eq 0 && "$n_upgr" -eq 0 ]]; then
                 echo
                 return 0
@@ -971,7 +951,6 @@ EOF
             read -rsn1 key < /dev/tty
             
             if [[ -z "$key" || "$key" == " " ]]; then
-                # Enter or Space pressed - go back to TUI
                 echo
                 # Restore non-canonical mode for fzf
                 if [[ -t 0 ]]; then
@@ -980,14 +959,12 @@ EOF
                 tput civis 2>/dev/null || true
                 continue
             else
-                # Any other key (including Esc) - exit
                 echo
                 echo "${CYAN}Exited without changes.${RESET}"
                 return 0
             fi
         fi
         
-        # Handle Enter - show confirmation
         if [[ -f "$STATE_FILE" ]] && grep -q "__SUDO__=true" "$STATE_FILE"; then
             USE_SUDO=true
         else
@@ -1003,7 +980,6 @@ EOF
              return 0
         fi
 
-        # Show summary and ask for confirmation
         echo -e "  ${BOLD}${WHITE}Pending Changes:${RESET}"
         [[ -n "$inst" ]] && echo -e "  ${GREEN}[+]${RESET} Install:  $inst"
         [[ -n "$rem" ]] && echo -e "  ${RED}[-]${RESET} Remove:   $rem"
@@ -1016,11 +992,9 @@ EOF
         read -rsn1 key < /dev/tty
         
         if [[ -z "$key" ]]; then
-            # Enter pressed - proceed with execution
             echo
             break
         else
-            # Any other key (including Esc) - go back to TUI
             echo
             # Restore non-canonical mode for fzf
             if [[ -t 0 ]]; then
@@ -1031,23 +1005,22 @@ EOF
         fi
     done
     
-    # Reset terminal
     [[ -n "${st_orig:-}" ]] && stty "$st_orig" 2>/dev/null || true
     tput cnorm 2>/dev/null || true
     
-    # Execute changes
     echo
     local cmd="pmget -c"
     [[ "$USE_SUDO" == true ]] && cmd+=" --sudo"
     [[ -n "$inst" ]] && cmd+=" -i $inst"
     [[ -n "$rem" ]] && cmd+=" -r $rem"
-    # Upgrades are treated as installs (package managers handle upgrades via install)
     [[ -n "$upgr" ]] && cmd+=" -i $upgr"
      
     echo "${WHITE}> Executing...${RESET}"
     eval "$cmd"
     exit 0
 }
+
+# Section: Main Execution Entry
 
 main() {
     parse_args "$@"

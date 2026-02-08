@@ -1,101 +1,106 @@
-# pmget
+# pmget - Package Manager Getter
 
-> Package Manager Getter — fuzzy search and install packages.
+`pmget` is a wrapper for Linux system package managers, providing a unified TUI (Text User Interface) for searching, installing, and removing packages across multiple distributions. It supports `nala` (preferred), `apt`, `dnf`, `pacman`, `zypper`, and `apk`.
 
-## Test
+![pmget TUI](https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/assets/preview.png)
 
-You can test the TUI application right now by running the following command:
+## Features
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash
-```
+- **Unified Interface**: Works with multiple package managers seamlessly.
+- **Interactive TUI**: Browse, search, and manage packages with ease.
+- **CLI Mode**: Scriptable operations for quick installs/removals.
+- **Self-Contained**: Single bash script with minimal dependencies (`curl`, `fzf`).
 
-This won't install the application, it will just run it.
-Installing, removing and upgrading packages through this method is not possible; Consulting available packages is.
-To install, remove or upgrade packages, proceed to the install section below.
+## Installation
 
-## Install | Update
-
-You can install or update `pmget` with a simple single-line command:
+You can install `pmget` with a single command:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash -s -- --self-install
 ```
 
-###### This installs `pmget` to `~/.local/bin` by default.
-###### For other locations:
+This will install `pmget` to `~/.local/bin` and add it to your PATH if necessary.
+
+### Manual Installation
+
+Alternatively, you can download the script manually:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash -s -- --self-install --usr     # /usr/local/bin (requires sudo)
-```
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash -s -- --self-install --root    # /root/.local/bin (requires sudo)
-```
-
-**Requires:** `bash`, `curl`, `fzf` and one of: `apt`, `dnf`, `pacman`, `zypper`, `apk`.
-
-Alternatively, if you already have `pmget` installed, you can update it by running:
-
-```bash
-pmget --self-upgrade
+wget https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget
+chmod +x pmget
+mv pmget /usr/local/bin/  # Or any directory in your PATH
 ```
 
 ## Usage
 
+### TUI Mode (Interactive)
+
+Simply run `pmget` to launch the interactive interface:
+
 ```bash
-pmget                    # TUI mode
-pmget -s                  # TUI with sudo
-pmget -c -i vim htop     # CLI: install packages
-pmget -c -r nano         # CLI: remove packages
-pmget --info curl        # Show package info
-pmget --self-install     # Install pmget itself into PATH
-pmget --self-upgrade     # Upgrade pmget itself
+pmget
 ```
 
-## Options
-
-| Flag | Description |
-|------|-------------|
-| `-c, --cli` | CLI mode (non-interactive) |
-| `-s, --sudo` | Use sudo |
-| `--show [a\|i\|u]` | Show mode: (a)ll, (i)nstalled, (u)pgradeable |
-| `-i PKG` | Packages to install |
-| `-r PKG` | Packages to remove |
-| `--info PKG` | Show package information |
-| `--self-install` | Install/update pmget |
-| `--self-upgrade` | Check for updates and upgrade |
-| `-v, --version` | Show version |
-| `-h, --help` | Help |
-
-## TUI Controls
+#### Navigation & Shortcuts
 
 | Key | Action |
-|-----|--------|
-| `↑`/`↓` | Navigate up/down |
-| `←`/`→` | Cycle state: none → install → remove |
-| `Space` | Toggle selection (same as `←`/`→`) |
-| `Tab` | Toggle sudo |
-| `Enter` | Execute |
-| `Esc` | Exit |
-| `Ctrl+V` | Toggle Package Information window |
-| `Ctrl+T` | Jump to top |
-| `Ctrl+B` | Jump to bottom |
+| --- | --- |
+| `↑` / `↓` | Navigate list |
+| `Space` | Toggle selection / Cycle state (Install/Remove/Upgrade) |
+| `Enter` | Apply changes |
+| `Tab` | Toggle Sudo |
+| `Ctrl+V` / `Alt+V` | Toggle Package Info Preview |
+| `Ctrl+T` / `Alt+T` | Jump to Top of list |
+| `Ctrl+B` / `Alt+B` | Jump to Bottom of list |
+| `Esc` | Go back / Exit |
 
-## States
+**Search**: Type to filter packages instantly.
+**Commands**:
+- `:i` - Show installed packages only
+- `:u` - Show upgradeable packages only
+- `:` - Show all packages (clear filter)
 
-| Symbol | Meaning |
-|--------|---------|
-| `[ ]` | Not selected |
-| `[✓]` | Installed (blue) |
-| `[^]` | Upgradeable (yellow) |
-| `[+]` | Marked for install (green) |
-| `[-]` | Marked for remove (red) |
+### CLI Mode (Scripting)
 
-## Uninstall
+Use flags to perform operations directly:
 
 ```bash
-rm $(which pmget)
+# Install packages
+pmget -c -i vim htop
+
+# Remove packages
+pmget -c -r nano
+
+# use Sudo
+pmget -c -s -i docker
+
+# Update cache
+pmget -u
 ```
 
-###### Apache License 2.0
+### Flags & Options
+
+| Flag | Description |
+| --- | --- |
+| `-c`, `--cli` | Enable CLI mode (non-interactive) |
+| `-s`, `--sudo` | Use `sudo` for operations |
+| `-u`, `--update` | Update package manager cache |
+| `--show [a/i/u]` | Show mode: (a)ll, (i)nstalled, (u)pgradeable |
+| `-i [PKG]`, `--install` | Install package(s) |
+| `-r [PKG]`, `--remove` | Remove package(s) |
+| `--info [PKG]` | Show detailed package info |
+| `--self-upgrade` | Update `pmget` to the latest version |
+| `--self-install` | Install `pmget` to system |
+| `-v`, `--version` | Show version |
+| `-h`, `--help` | Show help message |
+
+## Requirements
+
+- `bash` (4.0+)
+- `curl`
+- `fzf`
+- A supported package manager: `apt`, `nala`, `dnf`, `pacman`, `zypper`, or `apk`.
+
+## License
+
+Apache-2.0
