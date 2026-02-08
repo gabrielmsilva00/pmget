@@ -45,7 +45,7 @@ pmget --self-upgrade
 
 ```bash
 pmget                    # TUI mode
-pmget --sudo             # TUI with sudo
+pmget -s                  # TUI with sudo
 pmget -c -i vim htop     # CLI: install packages
 pmget -c -r nano         # CLI: remove packages
 pmget --info curl        # Show package info
@@ -58,8 +58,8 @@ pmget --self-upgrade     # Upgrade pmget itself
 | Flag | Description |
 |------|-------------|
 | `-c, --cli` | CLI mode (non-interactive) |
-| `--sudo` | Use sudo |
-| `-s, --show [a\|i\|u]` | Show mode: (a)ll, (i)nstalled, (u)pgradeable |
+| `-s, --sudo` | Use sudo |
+| `--show [a\|i\|u]` | Show mode: (a)ll, (i)nstalled, (u)pgradeable |
 | `-i PKG` | Packages to install |
 | `-r PKG` | Packages to remove |
 | `--info PKG` | Show package information |
@@ -72,12 +72,15 @@ pmget --self-upgrade     # Upgrade pmget itself
 
 | Key | Action |
 |-----|--------|
-| `↑`/`↓` | Navigate |
-| `→`/`←` | Cycle state: none → install → remove |
-| `Space` | Toggle selection |
+| `↑`/`↓` | Navigate up/down |
+| `←`/`→` | Cycle state: none → install → remove |
+| `Space` | Toggle selection (same as `←`/`→`) |
 | `Tab` | Toggle sudo |
 | `Enter` | Execute |
 | `Esc` | Exit |
+| `Ctrl+V` | Toggle Package Information window |
+| `Ctrl+T` | Jump to top |
+| `Ctrl+B` | Jump to bottom |
 
 ## States
 
@@ -94,8 +97,5 @@ pmget --self-upgrade     # Upgrade pmget itself
 ```bash
 rm $(which pmget)
 ```
-###### 
 
-## License
-
-Apache License 2.0
+###### Apache License 2.0
