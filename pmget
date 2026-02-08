@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pmget - Package Manager Getter (https://github.com/gabrielmsilva00/pmget)
 
-VERSION="1.2.10b"
+VERSION="1.2.10c"
 REPO="gabrielmsilva00/pmget"
 MAINTAINERS=("Gabriel Silva (@gabrielmsilva00)")
 
@@ -776,8 +776,8 @@ EOF
         --bind "space:reload($cmd_toggle)"
         --bind "tab:reload($cmd_sudo)"
         --bind "ctrl-v:toggle-preview"
-        --bind "ctrl-t:top"
-        --bind "ctrl-b:bottom"
+        --bind "ctrl-t:first"
+        --bind "ctrl-b:last"
         --bind "enter:accept"
     )
 
