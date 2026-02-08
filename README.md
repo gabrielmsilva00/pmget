@@ -45,7 +45,7 @@ pmget --self-upgrade
 
 ```bash
 pmget                    # TUI mode
-pmget -s                 # TUI with sudo
+pmget --sudo             # TUI with sudo
 pmget -c -i vim htop     # CLI: install packages
 pmget -c -r nano         # CLI: remove packages
 pmget --info curl        # Show package info
@@ -58,11 +58,13 @@ pmget --self-upgrade     # Upgrade pmget itself
 | Flag | Description |
 |------|-------------|
 | `-c, --cli` | CLI mode (non-interactive) |
-| `-s, --sudo` | Use sudo |
+| `--sudo` | Use sudo |
+| `-s, --show [a\|i\|u]` | Show mode: (a)ll, (i)nstalled, (u)pgradeable |
 | `-i PKG` | Packages to install |
 | `-r PKG` | Packages to remove |
 | `--info PKG` | Show package information |
 | `--self-install` | Install/update pmget |
+| `--self-upgrade` | Check for updates and upgrade |
 | `-v, --version` | Show version |
 | `-h, --help` | Help |
 
