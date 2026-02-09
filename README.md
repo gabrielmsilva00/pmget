@@ -125,7 +125,7 @@ The utility tool itself is in a perfectly working state AFAIK.
 
 However, I still plan on:
 
-- [ ] Support for `winget` (yes, really...)
+- [ ] Supporting `winget` (yes, really...)
 - [ ] Bugfixes (no currently known bugs, but we can never be 100% sure)
 
 ## License
