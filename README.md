@@ -119,6 +119,13 @@ CLI mode is used internally to execute the commands needed from TUI; Its usage i
 - `fzf`
 - A supported package manager, being one of: `apt`, `nala`, `dnf`, `pacman`, `zypper`, or `apk`.
 
+## Roadmap
+
+The utility tool itself is in a perfectly working state AFAIK.
+However, I still plan on:
+[ ] Support for `winget` (yes, really...)
+[ ] Bugfixes (no currently known bugs, but we can never be 100% sure)
+
 ## License
 
 Apache-2.0
