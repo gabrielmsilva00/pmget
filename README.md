@@ -123,8 +123,8 @@ CLI mode is used internally to execute the commands needed from TUI; Its usage i
 
 The utility tool itself is in a perfectly working state AFAIK.
 However, I still plan on:
-[ ] Support for `winget` (yes, really...)
-[ ] Bugfixes (no currently known bugs, but we can never be 100% sure)
+- [ ] Support for `winget` (yes, really...)
+- [ ] Bugfixes (no currently known bugs, but we can never be 100% sure)
 
 ## License
 
