@@ -48,6 +48,8 @@ Alternatively, you can download the script manually:
 ```bash
 wget https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget
 chmod +x pmget
+pmget --self-install
+# OR
 mv pmget /usr/local/bin/  # Or any directory in your PATH
 ```
 
@@ -113,9 +115,9 @@ CLI mode is used internally to execute the commands needed from TUI; Its usage i
 ## Requirements
 
 - `bash` (4.0+)
-- `curl`
+- `curl` (to install and fetch newest version; Optional)
 - `fzf`
-- A supported package manager: `apt`, `nala`, `dnf`, `pacman`, `zypper`, or `apk`.
+- A supported package manager, being one of: `apt`, `nala`, `dnf`, `pacman`, `zypper`, or `apk`.
 
 ## License
 
