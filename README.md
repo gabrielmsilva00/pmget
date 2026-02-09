@@ -6,6 +6,8 @@
 ![pmget TUI](https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/assets/tui.webp)
 ![pmget Work(https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/assets/work.webp)
 
+> This utility tool was HEAVILY inspired by ![Hydra0xetc's Search utility tool](https://github.com/Hydra0xetc/Search), be sure to check their work out too!
+
 ## Features
 
 - **Unified Interface**: Works with multiple package managers seamlessly.
