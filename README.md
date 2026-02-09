@@ -1,6 +1,6 @@
 # pmget - Package Manager Getter
 
-`pmget` is a wrapper for Linux system package managers, providing a unified TUI (Text User Interface) for searching, installing, and removing packages across multiple distributions. It supports `nala` (preferred), `apt`, `dnf`, `pacman`, `zypper`, and `apk`.
+`pmget` is a wrapper for Linux system package managers, providing an unified TUI (Text User Interface) for searching, installing, and removing packages across multiple distributions. It supports `nala` (preferred), `apt`, `dnf`, `pacman`, `zypper`, and `apk`.
 
 ##### TLDR Install & Upgrade command:
 ```bash
