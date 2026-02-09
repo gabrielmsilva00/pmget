@@ -2,7 +2,9 @@
 
 `pmget` is a wrapper for Linux system package managers, providing a unified TUI (Text User Interface) for searching, installing, and removing packages across multiple distributions. It supports `nala` (preferred), `apt`, `dnf`, `pacman`, `zypper`, and `apk`.
 
-![pmget TUI](https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/assets/preview.png)
+![pmget Install](https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/assets/install.webp)
+![pmget TUI](https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/assets/tui.webp)
+![pmget Work(https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/assets/work.webp)
 
 ## Features
 
@@ -57,19 +59,13 @@ pmget
 | Key | Action |
 | --- | --- |
 | `↑` / `↓` | Navigate list |
-| `Space` | Toggle selection / Cycle state (Install/Remove/Upgrade) |
+| `Space`/`←`/`→` | Toggle selection / Cycle state (Install/Remove/Upgrade) |
 | `Enter` | Apply changes |
 | `Tab` | Toggle Sudo |
 | `Ctrl+V` / `Alt+V` | Toggle Package Info Preview |
 | `Ctrl+T` / `Alt+T` | Jump to Top of list |
 | `Ctrl+B` / `Alt+B` | Jump to Bottom of list |
 | `Esc` | Go back / Exit |
-
-**Search**: Type to filter packages instantly.
-**Commands**:
-- `:i` - Show installed packages only
-- `:u` - Show upgradeable packages only
-- `:` - Show all packages (clear filter)
 
 ### CLI Mode (Scripting)
 
@@ -88,6 +84,8 @@ pmget -c -s -i docker
 # Update cache
 pmget -u
 ```
+
+CLI mode is used internally to execute the commands needed from TUI; Its usage is available but disencouraged: prefer the TUI mode.
 
 ### Flags & Options
 
