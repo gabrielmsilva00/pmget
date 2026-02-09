@@ -92,7 +92,7 @@ pmget -c -s -i docker
 pmget -u
 ```
 
-CLI mode is used internally to execute the commands needed from TUI; Its usage is available but disencouraged: prefer the TUI mode.
+CLI mode is used internally to execute the commands needed from TUI; Its usage is available but discouraged: prefer using the TUI mode directly.
 
 ### Flags & Options
 
