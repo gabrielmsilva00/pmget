@@ -18,7 +18,7 @@ curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | 
 - **Unified Interface**: Works with multiple package managers seamlessly.
 - **Interactive TUI**: Browse, search, and manage packages with ease.
 - **CLI Mode**: Scriptable operations for quick installs/removals.
-- **Self-Contained**: Single bash script with minimal dependencies (`curl`, `fzf`).
+- **Self-Contained**: Single bash script with minimal dependencies (`bash` & `fzf`; Optionally `curl`).
 
 ## Installation
 
@@ -28,7 +28,7 @@ You can install `pmget` with a single command:
 curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash -s -- --self-install
 ```
 
-This will install `pmget` to `~/.local/bin`, detech and fetch an updated cache of your package manager, and run the application.
+This will install `pmget` to `~/.local/bin` and fetch an updated cache of your package manager, and run the application.
 For alternative install locations you can:
 
 > Append `--usr` to install to `/usr/local/bin`
