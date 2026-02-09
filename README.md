@@ -2,9 +2,12 @@
 
 `pmget` is a wrapper for Linux system package managers, providing a unified TUI (Text User Interface) for searching, installing, and removing packages across multiple distributions. It supports `nala` (preferred), `apt`, `dnf`, `pacman`, `zypper`, and `apk`.
 
+##### TLDR Install command:
+`curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | bash -s -- --self-install`
+
 ![pmget Install](https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/assets/install.webp)
 ![pmget TUI](https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/assets/tui.webp)
-![pmget Work(https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/assets/work.webp)
+![pmget Work](https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/assets/work.webp)
 
 > This utility tool was HEAVILY inspired by ![Hydra0xetc's Search utility tool](https://github.com/Hydra0xetc/Search), be sure to check their work out too!
 
