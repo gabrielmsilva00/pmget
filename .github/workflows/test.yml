@@ -22,6 +22,7 @@ jobs:
           bash -n pmget
           bash tests/backends.sh
           bash tests/dependencies.sh
+          bash tests/installer.sh
       - name: Check interactive dependency prompts
         if: runner.os != 'Windows'
         run: python3 tests/dependency-prompts.py

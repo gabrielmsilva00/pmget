@@ -4,7 +4,7 @@ if (( BASH_VERSINFO[0] < 4 )); then
     echo "Error: pmget requires Bash 4 or newer (use Git Bash on Windows)." >&2
     exit 1
 fi
-VERSION="1.0.0"
+VERSION="1.0.1"
 REPO="gabrielmsilva00/pmget"
 LICENSE="Apache-2.0"
 MAINTAINERS=("Gabriel Silva (@gabrielmsilva00)")
@@ -224,10 +224,11 @@ self_install() {
     echo
     echo "${WHITE}→${RESET} Performing initial system update..."
     export PMGET_INSTALLING=true
+    local initial_status=0
     if [[ "$need_sudo" == true ]]; then
-        PMGET_PM="$pm_found" "$install_dir/pmget" -s -u
+        PMGET_PM="$pm_found" "$install_dir/pmget" -s -u || initial_status=$?
     else
-        PMGET_PM="$pm_found" "$install_dir/pmget" -u
+        PMGET_PM="$pm_found" "$install_dir/pmget" -u || initial_status=$?
     fi
 
     if [[ "$need_sudo" == false && ":$PATH:" != *":$install_dir:"* ]]; then
@@ -251,6 +252,12 @@ self_install() {
             echo "${GREEN}✓${RESET} Added to PATH in $shell_rc"
             echo "${YELLOW}!${RESET} Run: source $shell_rc"
         fi
+    fi
+
+    if (( initial_status != 0 )); then
+        echo "Error: Initial package-manager update/startup failed (exit $initial_status)." >&2
+        echo "pmget remains installed at $install_dir/pmget. Retry with: pmget -u" >&2
+        exit "$initial_status"
     fi
 
     echo -e "\n${GREEN}Done!${RESET} Run: pmget"
@@ -355,35 +362,43 @@ detect_pm() {
 # Section: Cache Management
 
 update_cache() {
-    detect_pm
+    detect_pm || return 1
     echo -e "${BOLD}${BLUE}Updating package manager cache...${RESET}"
     local cmd=()
-    [[ "$USE_SUDO" == true && $EUID -ne 0 ]] && supports_sudo && cmd+=(sudo)
+    # System metadata needs root even when pmget itself is installed in HOME.
+    # Elevate this operation without changing the TUI's later sudo selection.
+    if supports_sudo && (( EUID != 0 )); then
+        command -v sudo &>/dev/null || {
+            echo "Error: Refreshing $DETECTED_PM requires root or sudo." >&2
+            return 1
+        }
+        cmd+=(sudo)
+    fi
     
     case "$DETECTED_PM" in
         nala|apt)
             echo -e "${WHITE}→${RESET} Cleaning and updating ${DETECTED_PM}..."
-            "${cmd[@]}" "$DETECTED_PM" clean 2>/dev/null || true
+            "${cmd[@]}" "$DETECTED_PM" clean || return $?
             "${cmd[@]}" "$DETECTED_PM" update
             ;;
         dnf)
             echo -e "${WHITE}→${RESET} Cleaning and updating dnf..."
-            "${cmd[@]}" dnf clean all
+            "${cmd[@]}" dnf clean all || return $?
             "${cmd[@]}" dnf makecache
             ;;
         pacman)
             echo -e "${WHITE}→${RESET} Cleaning and updating pacman..."
-            "${cmd[@]}" pacman -Sc --noconfirm
+            "${cmd[@]}" pacman -Sc --noconfirm || return $?
             "${cmd[@]}" pacman -Sy
             ;;
         zypper)
             echo -e "${WHITE}→${RESET} Cleaning and updating zypper..."
-            "${cmd[@]}" zypper clean -a
+            "${cmd[@]}" zypper clean -a || return $?
             "${cmd[@]}" zypper refresh
             ;;
         apk)
             echo -e "${WHITE}→${RESET} Cleaning and updating apk..."
-            "${cmd[@]}" apk cache clean
+            "${cmd[@]}" apk cache clean || return $?
             "${cmd[@]}" apk update
             ;;
         brew) brew update ;;

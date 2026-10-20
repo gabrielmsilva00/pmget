@@ -32,6 +32,7 @@ curl -fsSL https://raw.githubusercontent.com/gabrielmsilva00/pmget/main/pmget | 
 ```
 
 This will install `pmget` to `~/.local/bin` and fetch an updated cache of your package manager, and run the application.
+Refreshing Linux system package-manager metadata uses `sudo` when needed, including for a local installation; root, Homebrew, WinGet, and Chocolatey run without Unix sudo. If the initial update or startup fails, the installer keeps pmget installed, reports the failure, and exits with a nonzero status. Run `pmget -u` to retry.
 For alternative install locations you can:
 
 > Append `--usr` to install to `/usr/local/bin`
@@ -216,6 +217,7 @@ Run the isolated backend checks without installing or removing packages:
 bash -n pmget
 bash tests/backends.sh
 bash tests/dependencies.sh
+bash tests/installer.sh
 # On Linux/macOS/WSL, also exercise the real terminal prompt:
 python3 tests/dependency-prompts.py
 ```
