@@ -1,19 +1,89 @@
 #!/usr/bin/env bash
 # pmget - Package Manager Getter (https://github.com/gabrielmsilva00/pmget)
+if (( BASH_VERSINFO[0] < 4 )); then
+    echo "Error: pmget requires Bash 4 or newer (use Git Bash on Windows)." >&2
+    exit 1
+fi
 VERSION="1.0.0"
 REPO="gabrielmsilva00/pmget"
 LICENSE="Apache-2.0"
 MAINTAINERS=("Gabriel Silva (@gabrielmsilva00)")
+SUPPORTED_PMS=(nala apt dnf pacman zypper apk brew winget choco)
+REQUESTED_PM="${PMGET_PM:-}"
+
+pm_candidates() {
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*) printf '%s\n' winget choco brew nala apt dnf pacman zypper apk ;;
+        Darwin*) printf '%s\n' brew nala apt dnf pacman zypper apk winget choco ;;
+        *) printf '%s\n' "${SUPPORTED_PMS[@]}" ;;
+    esac
+}
+
+supports_sudo() {
+    case "$DETECTED_PM" in brew|winget|choco) return 1 ;; esac
+}
+
+os_label() {
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*) echo Windows ;;
+        Darwin*) echo macOS ;;
+        Linux)
+            if [[ -n "${WSL_DISTRO_NAME:-}${WSL_INTEROP:-}" || "$(uname -r)" == *[Mm]icrosoft* ]]; then
+                echo 'Linux (WSL)'
+            else
+                echo Linux
+            fi ;;
+        *) uname -s ;;
+    esac
+}
+
+# Dispatch before parsing actions, so --wsl also applies to --info, --help,
+# and the self-installer regardless of the flag order.
+forward_to_wsl() {
+    local arg requested=false
+    local -a forwarded=()
+    for arg in "$@"; do
+        case "$arg" in
+            --wsl) requested=true ;;
+            *) forwarded+=("$arg") ;;
+        esac
+    done
+    [[ "$requested" == true ]] || return 0
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*) ;;
+        *) return 0 ;;
+    esac
+    command -v wsl.exe &>/dev/null || {
+        echo "Error: --wsl requires WSL and an installed Linux distribution." >&2
+        return 1
+    }
+    local script_path="${BASH_SOURCE[0]}"
+    [[ -f "$script_path" ]] || {
+        echo "Error: --wsl requires a saved pmget script. Download pmget first, then run bash ./pmget --wsl." >&2
+        return 1
+    }
+    script_path=$(cygpath -aw "$script_path") || return 1
+    # Pass paths and user arguments as positional parameters. Disable MSYS
+    # conversion because wslpath, running inside WSL, handles the Windows path.
+    local status=0
+    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' wsl.exe --exec bash -c '
+        script_path=$(wslpath -u "$1") || exit $?
+        export PMGET_PM="$2"
+        shift 2
+        exec bash "$script_path" "$@"
+    ' pmget-wsl "$script_path" "${PMGET_PM:-}" "${forwarded[@]}" || status=$?
+    exit "$status"
+}
 
 
-BOLD=$(tput bold 2>/dev/null) || BOLD=""
-RESET=$(tput sgr0 2>/dev/null) || RESET=""
-RED=$(tput setaf 1 2>/dev/null) || RED=""
-GREEN=$(tput setaf 2 2>/dev/null) || GREEN=""
-YELLOW=$(tput setaf 3 2>/dev/null) || YELLOW=""
-BLUE=$(tput setaf 4 2>/dev/null) || BLUE=""
-CYAN=$(tput setaf 6 2>/dev/null) || CYAN=""
-WHITE=$(tput setaf 7 2>/dev/null) || WHITE=""
+BOLD=""; RESET=""; RED=""; GREEN=""; YELLOW=""; BLUE=""; CYAN=""; WHITE=""
+if [[ -t 1 && "${TERM:-}" != dumb && -z "${NO_COLOR:-}" ]]; then
+    BOLD=$'\033[1m'; RESET=$'\033[0m'; RED=$'\033[31m'; GREEN=$'\033[32m'
+    YELLOW=$'\033[33m'; BLUE=$'\033[34m'; CYAN=$'\033[36m'; WHITE=$'\033[37m'
+fi
+
+show_cursor() { [[ ! -t 1 ]] || printf '\033[?25h'; }
+hide_cursor() { [[ ! -t 1 ]] || printf '\033[?25l'; }
 
 # Section: Self-Installation Logic
 
@@ -23,14 +93,16 @@ self_install() {
     local install_mode=""
     local need_sudo=false
     local install_dir=""
-    local missing_deps=()
 
-    for arg in "$@"; do
-        case "$arg" in
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
             --root|--usr|--local)
                 [[ -n "$install_mode" ]] && { echo "${RED}Error: Only one of --root, --usr, --local allowed${RESET}"; exit 1; }
-                install_mode="${arg#--}"
+                install_mode="${1#--}"
                 ;;
+            --pm)
+                [[ -n "${2:-}" ]] || { echo "Error: --pm requires a package manager." >&2; exit 1; }
+                REQUESTED_PM="$2"; shift ;;
             -h|--help)
                 echo "pmget self-installer v${VERSION}"
                 echo "Usage: curl -fsSL <url>/pmget | bash [-s -- OPTIONS]"
@@ -43,6 +115,7 @@ self_install() {
                 exit 0
                 ;;
         esac
+        shift
     done
 
     case "${install_mode:-local}" in
@@ -91,21 +164,13 @@ self_install() {
         echo
     fi
 
-    command -v curl &>/dev/null && echo "${GREEN}✓${RESET} curl" || { echo "${RED}✗${RESET} curl (required)"; missing_deps+=("curl"); }
-    command -v fzf &>/dev/null && echo "${GREEN}✓${RESET} fzf" || { echo "${RED}✗${RESET} fzf (required)"; missing_deps+=("fzf"); }
-
-    local pm_found=""
-    for p in nala pkg apt dpkg dnf yum pacman zypper apk; do
-        command -v "$p" &>/dev/null && { pm_found="$p"; echo "${GREEN}✓${RESET} $p"; break; }
+    detect_pm || exit 1
+    local pm_found="$DETECTED_PM" dependency
+    echo "${GREEN}✓${RESET} $pm_found"
+    for dependency in curl fzf; do
+        require_dependency "$dependency" || exit 1
+        echo "${GREEN}✓${RESET} $dependency"
     done
-    [[ -z "$pm_found" ]] && { echo "${RED}✗${RESET} package manager (nala/pkg/apt/dpkg/dnf/yum/pacman/zypper/apk)"; missing_deps+=("package-manager"); }
-
-    if [[ ${#missing_deps[@]} -gt 0 ]]; then
-        echo
-        echo "${RED}Missing dependencies:${RESET} ${missing_deps[*]}"
-        echo "Please install them and re-run the installer."
-        exit 1
-    fi
 
     echo
 
@@ -160,9 +225,9 @@ self_install() {
     echo "${WHITE}→${RESET} Performing initial system update..."
     export PMGET_INSTALLING=true
     if [[ "$need_sudo" == true ]]; then
-        "$install_dir/pmget" -s -u
+        PMGET_PM="$pm_found" "$install_dir/pmget" -s -u
     else
-        "$install_dir/pmget" -u
+        PMGET_PM="$pm_found" "$install_dir/pmget" -u
     fi
 
     if [[ "$need_sudo" == false && ":$PATH:" != *":$install_dir:"* ]]; then
@@ -195,6 +260,7 @@ self_install() {
 # Section: Self-Upgrade Logic
 
 perform_self_upgrade() {
+    require_dependency curl || exit 1
     echo "Checking for updates..."
     local tmpfile
     tmpfile=$(mktemp)
@@ -233,22 +299,12 @@ perform_self_upgrade() {
     fi
     
     chmod +x "$tmpfile"
-    "$tmpfile" --self-install "$install_arg"
+    PMGET_PM="$REQUESTED_PM" "$tmpfile" --self-install "$install_arg"
     local ret=$?
     rm -f "$tmpfile"
     exit $ret
 }
 
-
-if [[ -z "$PMGET_INSTALLING" && ! -t 0 && "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    skip_install=false
-    for arg in "$@"; do
-        case "$arg" in
-            -v|--version|-h|--help|--info) skip_install=true; break;;
-        esac
-    done
-    [[ "$skip_install" == false ]] && self_install "$@"
-fi
 
 # Section: Constants & Cleanup
 
@@ -257,15 +313,19 @@ USE_SUDO=false
 SHOW_MODE="ALL"
 declare -a INSTALL_PKGS=()
 declare -a REMOVE_PKGS=()
+declare -a UPGRADE_PKGS=()
 DETECTED_PM=""
 UPDATE_CACHE=false
+REFRESH_CACHE=false
+INFO_PKG=""
+SELF_UPGRADE=false
 PKG_FILE=""
 STATE_FILE=""
 
 cleanup() {
-    tput cnorm 2>/dev/null || true
     [[ -f "${PKG_FILE:-}" ]] && rm -f "$PKG_FILE"
     [[ -f "${STATE_FILE:-}" ]] && rm -f "$STATE_FILE"
+    return 0
 }
 trap cleanup EXIT INT
 
@@ -273,15 +333,23 @@ trap cleanup EXIT INT
 
 detect_pm() {
     [[ -n "$DETECTED_PM" ]] && return 0
-    for pm in nala apt dnf pacman zypper apk; do
+    local pm
+    if [[ -n "$REQUESTED_PM" ]]; then
+        case "$REQUESTED_PM" in
+            nala|apt|dnf|pacman|zypper|apk|brew|winget|choco) ;;
+            *) echo "Error: Unsupported package manager: $REQUESTED_PM" >&2; return 1 ;;
+        esac
+    fi
+    for pm in $(pm_candidates); do
+        [[ -n "$REQUESTED_PM" && "$pm" != "$REQUESTED_PM" ]] && continue
         if command -v "$pm" &>/dev/null; then
             DETECTED_PM="$pm"
             PM_PATH=$(command -v "$pm")
             return 0
         fi
     done
-    echo "${RED}Error: No supported package manager found (nala/apt/dnf/pacman/zypper/apk).${RESET}" >&2
-    exit 1
+    echo "${RED}Error: Package manager not found (${REQUESTED_PM:-${SUPPORTED_PMS[*]}}).${RESET}" >&2
+    return 1
 }
 
 # Section: Cache Management
@@ -290,7 +358,7 @@ update_cache() {
     detect_pm
     echo -e "${BOLD}${BLUE}Updating package manager cache...${RESET}"
     local cmd=()
-    [[ "$USE_SUDO" == true || $EUID -eq 0 ]] && cmd+=(sudo)
+    [[ "$USE_SUDO" == true && $EUID -ne 0 ]] && supports_sudo && cmd+=(sudo)
     
     case "$DETECTED_PM" in
         nala|apt)
@@ -318,6 +386,12 @@ update_cache() {
             "${cmd[@]}" apk cache clean
             "${cmd[@]}" apk update
             ;;
+        brew) brew update ;;
+        winget) winget source update --disable-interactivity ;;
+        choco)
+            # Chocolatey refreshes repository metadata on each query.
+            echo "Chocolatey queries refresh repository metadata automatically."
+            ;;
     esac
 }
 
@@ -325,23 +399,242 @@ update_cache() {
 
 run_pm() {
     local action="$1"; shift; local cmd=()
-    [[ "$USE_SUDO" == true ]] && cmd+=(sudo)
+    [[ $# -gt 0 ]] || return 0
+    [[ "$USE_SUDO" == true && $EUID -ne 0 ]] && supports_sudo && cmd+=(sudo)
+    local pkg verb rc=0
+    case "$DETECTED_PM" in
+        winget)
+            case "$action" in install) verb=install ;; remove) verb=uninstall ;; upgrade) verb=upgrade ;; *) return 1 ;; esac
+            # WinGet accepts one exact ID per operation.
+            for pkg in "$@"; do
+                local args=("$verb" --id "$pkg" --exact --source winget --accept-source-agreements --disable-interactivity)
+                [[ "$action" != remove ]] && args+=(--accept-package-agreements)
+                winget "${args[@]}" || rc=1
+            done
+            return "$rc"
+            ;;
+        choco)
+            case "$action" in install) verb=install ;; remove) verb=uninstall ;; upgrade) verb=upgrade ;; *) return 1 ;; esac
+            local status=0
+            choco "$verb" "$@" --yes --no-progress || status=$?
+            # Native Windows exit codes are reduced modulo 256 by Bash.
+            # Chocolatey 1641/3010 mean success with a reboot initiated/required.
+            case "$status" in 0|105|194) return 0 ;; *) return "$status" ;; esac
+            ;;
+        brew)
+            case "$action" in install) verb=install ;; remove) verb=uninstall ;; upgrade) verb=upgrade ;; *) return 1 ;; esac
+            for pkg in "$@"; do
+                case "$pkg" in
+                    formula:*) brew "$verb" --formula "${pkg#formula:}" || rc=1 ;;
+                    cask:*) brew "$verb" --cask "${pkg#cask:}" || rc=1 ;;
+                    *) brew "$verb" "$pkg" || rc=1 ;;
+                esac
+            done
+            return "$rc"
+            ;;
+    esac
     case "$DETECTED_PM:$action" in
-        nala:install|apt:install)    cmd+=("$DETECTED_PM" install -y "$@") ;;
+        nala:install|apt:install|nala:upgrade|apt:upgrade) cmd+=("$DETECTED_PM" install -y "$@") ;;
         nala:remove|apt:remove)     cmd+=("$DETECTED_PM" remove -y "$@") ;;
         dnf:install)    cmd+=(dnf install -y "$@") ;;
         dnf:remove)     cmd+=(dnf remove -y "$@") ;;
-        pacman:install) cmd+=(pacman -S --noconfirm "$@") ;;
+        dnf:upgrade)    cmd+=(dnf upgrade -y "$@") ;;
+        pacman:install|pacman:upgrade) cmd+=(pacman -S --noconfirm "$@") ;;
         pacman:remove)  cmd+=(pacman -R --noconfirm "$@") ;;
         zypper:install) cmd+=(zypper install -y "$@") ;;
         zypper:remove)  cmd+=(zypper remove -y "$@") ;;
+        zypper:upgrade) cmd+=(zypper update -y "$@") ;;
         apk:install)    cmd+=(apk add "$@") ;;
         apk:remove)     cmd+=(apk del "$@") ;;
+        apk:upgrade)    cmd+=(apk upgrade "$@") ;;
+        *) echo "Error: Unsupported operation: $DETECTED_PM $action" >&2; return 1 ;;
     esac
     "${cmd[@]}"
 }
 
+# Section: Dependencies
+
+dependency_package() {
+    case "$DETECTED_PM:$1" in
+        winget:fzf) echo junegunn.fzf ;;
+        winget:curl) echo cURL.cURL ;;
+        brew:fzf|brew:curl) echo "formula:$1" ;;
+        *:fzf|*:curl) echo "$1" ;;
+        *) echo "Error: No dependency package mapping for $1." >&2; return 1 ;;
+    esac
+}
+
+refresh_dependency_path() {
+    local dependency="$1" directory
+    local -a directories=()
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*)
+            [[ -z "${LOCALAPPDATA:-}" ]] || directories+=("$LOCALAPPDATA/Microsoft/WinGet/Links")
+            [[ -z "${ProgramData:-}" ]] || directories+=("$ProgramData/Microsoft/WinGet/Links")
+            directories+=("${USERPROFILE:-$HOME}/scoop/shims" "$HOME/.fzf/bin")
+            [[ -z "${SCOOP:-}" ]] || directories+=("$SCOOP/shims")
+            [[ -z "${ChocolateyInstall:-}" ]] || directories+=("$ChocolateyInstall/bin")
+            for directory in "${directories[@]}"; do
+                directory=$(cygpath -u "$directory") || continue
+                if [[ -x "$directory/$dependency.exe" && ":$PATH:" != *":$directory:"* ]]; then
+                    export PATH="$PATH:$directory"
+                fi
+            done
+            ;;
+        *)
+            # Homebrew's curl formula can be keg-only, outside the main bin dir.
+            if [[ "$DETECTED_PM" == brew && "$dependency" == curl ]]; then
+                directory=$(brew --prefix curl 2>/dev/null) || return 0
+                [[ ! -x "$directory/bin/curl" || ":$PATH:" == *":$directory/bin:"* ]] || export PATH="$PATH:$directory/bin"
+            fi
+            ;;
+    esac
+    hash -r
+}
+
+confirm_dependency_install() {
+    local response=""
+    # Read from the terminal, never consume piped script text or an unattended
+    # job's input as consent. A piped installer may still have a terminal on fd 2.
+    if [[ -t 0 ]]; then
+        printf '%s [y/N] ' "$1" >&2
+        read -r response || return 1
+    elif [[ -t 2 ]]; then
+        printf '%s [y/N] ' "$1" >&2
+        read -r response 2>/dev/null < /dev/tty || return 1
+    else
+        echo 'No interactive terminal; dependency installation was skipped.' >&2
+        return 1
+    fi
+    [[ "${response,,}" == y || "${response,,}" == yes ]]
+}
+
+require_dependency() {
+    local dependency="$1" package
+    command -v "$dependency" &>/dev/null && return 0
+    detect_pm || return 1
+    refresh_dependency_path "$dependency"
+    command -v "$dependency" &>/dev/null && return 0
+    package=$(dependency_package "$dependency") || return 1
+    echo "Missing dependency: $dependency (package: $package; manager: $DETECTED_PM)." >&2
+    if ! confirm_dependency_install "Install $dependency using $DETECTED_PM?"; then
+        echo "Error: $dependency is required for this operation. Install package $package using $DETECTED_PM and retry." >&2
+        return 1
+    fi
+    # Dependency installation needs privilege on Linux even if --sudo wasn't
+    # requested for the user's later package operations. Keep that choice local.
+    local USE_SUDO=false
+    if supports_sudo && (( EUID != 0 )); then
+        command -v sudo &>/dev/null || {
+            echo "Error: Installing $dependency with $DETECTED_PM requires root or sudo." >&2
+            return 1
+        }
+        USE_SUDO=true
+    fi
+    if ! run_pm install "$package"; then
+        echo "Error: Failed to install $dependency using $DETECTED_PM." >&2
+        return 1
+    fi
+    refresh_dependency_path "$dependency"
+    if ! command -v "$dependency" &>/dev/null; then
+        echo "Error: $DETECTED_PM completed, but $dependency is still unavailable. Check its installation/PATH and retry." >&2
+        return 1
+    fi
+    echo "Installed dependency: $dependency." >&2
+}
+
 # Section: Package Query Functions
+
+# WinGet emits localized, padded tables rather than JSON. Only consume rows
+# below a separator, and never pass a truncated identifier to an operation.
+parse_winget_table() {
+    awk -v mode="$1" '
+        function trim(s) {sub(/^ +/, "", s); sub(/ +$/, "", s); return s}
+        { gsub(/\r/, ""); gsub(/\033\[[0-9;?]*[A-Za-z]/, "") }
+        /^-[- ]+$/ {
+            # Column offsets come from the preceding localized header. Data
+            # may have only one separating space, or spaces inside app names.
+            rest=header; offset=0; n=0
+            while (match(rest, /[^ ]+/)) {
+                start[++n]=offset+RSTART
+                offset+=RSTART+RLENGTH-1
+                rest=substr(rest, RSTART+RLENGTH)
+            }
+            table=(n >= 3); next
+        }
+        !table {header=$0; next}
+        table {
+            for (i=1; i<=n; i++) col[i]=trim(substr($0, start[i], (i<n ? start[i+1]-start[i] : length($0))))
+            if (col[3] == "" || col[2] ~ /…|\.\.\./ || col[2] !~ /^[A-Za-z0-9][A-Za-z0-9._+-]*$/) next
+            if (mode == "packages") print col[2] "\t" col[3] "\t" col[1]
+            else if (mode == "upgradeable" && n >= 4) print col[2] "\t" col[4]
+            else if (mode == "installed") print col[2] "\t" col[3]
+        }'
+}
+
+parse_choco_table() {
+    awk -F'|' -v mode="$1" '
+        { sub(/\r$/, "") }
+        $1 ~ /^[A-Za-z0-9][A-Za-z0-9._-]*$/ && NF >= 2 {
+            if (mode == "packages") print $1 "\t" $2 "\t" $1
+            else if (mode == "upgradeable" && NF >= 4 && tolower($4) != "true") print $1 "\t" $3
+            else if (mode == "installed") print $1 "\t" $2
+        }'
+}
+
+query_winget() {
+    local mode="$1" output status=0
+    shift
+    output=$(winget "$@" --source winget --accept-source-agreements --disable-interactivity) || status=$?
+    # APPINSTALLER_CLI_ERROR_NO_APPLICATIONS_FOUND (0x8A150014).
+    [[ "$status" -eq 20 ]] && return 0
+    if [[ "$status" -ne 0 ]]; then
+        printf 'WinGet query failed (%s):\n%s\n' "$status" "$output" >&2
+        return 1
+    fi
+    printf '%s\n' "$output" | parse_winget_table "$mode"
+}
+
+query_choco() {
+    local mode="$1" output status=0
+    shift
+    output=$(choco "$@" --limit-output --no-color) || status=$?
+    # Enhanced exit code 2 means no search results, or outdated packages found.
+    if [[ "$status" -ne 0 && "$status" -ne 2 ]]; then
+        printf 'Chocolatey query failed (%s):\n%s\n' "$status" "$output" >&2
+        return 1
+    fi
+    printf '%s\n' "$output" | parse_choco_table "$mode"
+}
+
+fetch_brew_packages() (
+    set -o pipefail
+    local kind
+    for kind in formula cask; do
+        # Include the macOS cask catalog alongside formulae.
+        [[ "$kind" == cask && "$(uname -s)" != Darwin ]] && continue
+        brew search "--$kind" '/.*/' 2>/dev/null |
+            awk -v kind="$kind" '/^[A-Za-z0-9][A-Za-z0-9@+._\/-]*$/ {print kind ":" $0 "\t \t" $0}' || return $?
+    done
+)
+
+fetch_brew_local() (
+    set -o pipefail
+    local mode="$1" kind
+    for kind in formula cask; do
+        [[ "$kind" == cask && "$(uname -s)" != Darwin ]] && continue
+        if [[ "$mode" == installed ]]; then
+            brew list "--$kind" --versions 2>/dev/null |
+                awk -v kind="$kind" 'NF >= 2 {print kind ":" $1 "\t" $NF}' || return $?
+        else
+            brew outdated "--$kind" --verbose 2>/dev/null |
+                awk -v kind="$kind" '/ (<|!=) / && !/\[pinned at / {
+                    version=$0; sub(/^.* (<|!=) /, "", version)
+                    print kind ":" $1 "\t" version
+                }' || return $?
+        fi
+    done
+)
 
 fetch_packages() {
     case "$DETECTED_PM" in
@@ -361,6 +654,9 @@ fetch_packages() {
         pacman)   pacman -Sl 2>/dev/null | awk '{print $2 "\t" $3 "\t" $2}' ;;
         zypper)   zypper packages 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3); gsub(/ /,"",$4); print $3 "\t" $4 "\t" $3}' ;;
         apk)      apk search -v 2>/dev/null | sed -E 's/^(.*)-([0-9].*) - (.*)$/\1\t\2\t\3/' | sed -E 's/^([^ ]+)-([0-9][^ ]*)$/\1\t\2\t/' ;;
+        brew)     fetch_brew_packages ;;
+        winget)   query_winget packages search --query "" ;;
+        choco)    query_choco packages search ;;
     esac
 }
 
@@ -371,6 +667,9 @@ fetch_installed() {
         pacman)   pacman -Q 2>/dev/null | sed 's/ /\t/' ;;
         zypper)   rpm -qa --queryformat '%{NAME}\t%{VERSION}-%{RELEASE}\n' 2>/dev/null ;;
         apk)      apk info -v 2>/dev/null | sed -E 's/(.*)-([0-9].*)/\1\t\2/' ;;
+        brew)     fetch_brew_local installed ;;
+        winget)   query_winget installed list ;;
+        choco)    query_choco installed list ;;
     esac
 }
 
@@ -381,19 +680,105 @@ fetch_upgradeable() {
         pacman)   pacman -Qu 2>/dev/null | awk '{print $1 "\t" $4}' ;;
         zypper)   zypper list-updates 2>/dev/null | awk -F'|' 'NR>4{gsub(/ /,"",$3); gsub(/ /,"",$5); print $3 "\t" $5}' ;;
         apk)      apk version -u 2>/dev/null | sed -nE 's/^(.*)-([0-9].*) < (.*)/\1\t\3/p' ;;
+        brew)     fetch_brew_local upgradeable ;;
+        winget)   query_winget upgradeable list --upgrade-available ;;
+        choco)    query_choco upgradeable outdated ;;
     esac
 }
 
 # Section: Information Display
 
+cache_directory() {
+    printf '%s/%s\n' "${PMGET_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/pmget}" "$DETECTED_PM"
+}
+
+# Publish successful results atomically; an empty upgrade list is valid too.
+# An unwritable cache never
+# prevents package queries, and failed refreshes never replace a good entry.
+cached_query() {
+    local key="$1" ttl="$2"; shift 2
+    local directory file stamp now saved=0 temporary allow_empty=false
+    [[ "$key" == upgrades-* ]] && allow_empty=true
+    directory=$(cache_directory)
+    file="$directory/$key.v1"; stamp="$file.time"
+    now=$(date +%s)
+    [[ -f "$stamp" ]] && read -r saved < "$stamp"
+    if [[ "$REFRESH_CACHE" != true && -f "$file" && "$saved" =~ ^[0-9]+$ ]] &&
+       [[ -s "$file" || "$allow_empty" == true ]] &&
+       (( now >= saved && now - saved < ttl )); then
+        cat "$file"
+        return
+    fi
+    if ! mkdir -p "$directory" 2>/dev/null; then "$@"; return $?; fi
+    temporary=$(mktemp "$directory/$key.XXXXXXXX") || { "$@"; return $?; }
+    if "$@" > "$temporary"; then
+        if [[ -s "$temporary" || "$allow_empty" == true ]] && mv -f "$temporary" "$file"; then
+            printf '%s\n' "$now" > "$stamp"
+            cat "$file"
+        else
+            cat "$temporary"
+            rm -f "$temporary"
+        fi
+    else
+        local status=$?
+        rm -f "$temporary"
+        return "$status"
+    fi
+}
+
+load_package_data() {
+    local catalog_pid='' installed_pid failed=0 snapshot
+    # Filtered views need only local inventories; the merge below supplies rows.
+    if [[ "$SHOW_MODE" == ALL ]]; then
+        cached_query catalog 3600 fetch_packages > "$PKG_FILE" & catalog_pid=$!
+    else
+        : > "$PKG_FILE"
+    fi
+    fetch_installed > "$INST_FILE" & installed_pid=$!
+    if wait "$installed_pid"; then
+        if [[ -s "$INST_FILE" ]]; then
+            # Reuse upgrade checks briefly, but never across an installation,
+            # removal, or version change made by pmget or another application.
+            snapshot=$(cksum < "$INST_FILE"); snapshot=${snapshot// /-}
+            cached_query "upgrades-$snapshot" 60 fetch_upgradeable > "$UPGR_FILE" || failed=1
+        else
+            : > "$UPGR_FILE"
+        fi
+    else
+        failed=1
+    fi
+    [[ -n "$catalog_pid" ]] && { wait "$catalog_pid" || failed=1; }
+    return "$failed"
+}
+
+fetch_remote_version() {
+    local source
+    source=$(curl -fsSL --connect-timeout 2 --max-time 3 "https://raw.githubusercontent.com/${REPO}/main/pmget") || return 1
+    awk -F'"' '/^VERSION=/ {print $2; found=1; exit} END {if (!found) exit 1}' <<< "$source"
+}
+
 show_info() {
     echo -e "${BOLD}${CYAN}Package Info:${RESET}\n"
-    case "$DETECTED_PM" in
-        nala|apt)      apt-cache show "$1" 2>/dev/null | grep -Ev '^(Section:|Priority:|Installed|Essential:|SHA1:|SHA256:|SHA512:|MD5sum:|Description-md5:|Filename:|Size:|Task:)' ;;
-        dnf)      dnf info "$1" 2>/dev/null ;;
-        pacman)   pacman -Si "$1" 2>/dev/null || pacman -Qi "$1" 2>/dev/null ;;
-        zypper)   zypper info "$1" 2>/dev/null ;;
-        apk)      apk info -a "$1" 2>/dev/null ;;
+    show_package_info "$DETECTED_PM" "$PM_PATH" "$1"
+}
+
+# Also embedded in the TUI helper so previews and --info stay in sync.
+show_package_info() {
+    local pm_name="$1" pm_path="$2" pkg="$3"
+    case "$pm_name" in
+        nala|apt) apt-cache show "$pkg" 2>/dev/null | grep -Ev '^(Section:|Priority:|Installed|Essential:|SHA1:|SHA256:|SHA512:|MD5sum:|Description-md5:|Filename:|Size:|Task:)' ;;
+        dnf) "$pm_path" info "$pkg" 2>/dev/null ;;
+        pacman) "$pm_path" -Si "$pkg" 2>/dev/null || "$pm_path" -Qi "$pkg" 2>/dev/null ;;
+        zypper) "$pm_path" info "$pkg" 2>/dev/null ;;
+        apk) "$pm_path" info -a "$pkg" 2>/dev/null ;;
+        winget) "$pm_path" show --id "$pkg" --exact --source winget --accept-source-agreements --disable-interactivity ;;
+        choco) "$pm_path" info "$pkg" --no-color ;;
+        brew)
+            case "$pkg" in
+                formula:*) "$pm_path" info --formula "${pkg#formula:}" ;;
+                cask:*) "$pm_path" info --cask "${pkg#cask:}" ;;
+                *) "$pm_path" info "$pkg" ;;
+            esac ;;
     esac
 }
 
@@ -420,11 +805,15 @@ ${BOLD}Install pmget (one-liner):${RESET}
 
 ${BOLD}Options:${RESET}
   -c, --cli                 CLI mode (non-interactive)
+  --wsl                     Run inside the default WSL distribution on Windows
+  --refresh                 Fetch fresh catalog and upgrade data, bypassing caches
+  --pm MANAGER              Select ${SUPPORTED_PMS[*]} (or set PMGET_PM)
   -s, --sudo                Use sudo for operations
   -u, --update              Update package manager cache and clear old cache
   --show [a|i|u]            Show mode: (a)ll, (i)nstalled, (u)pgradeable
   -i PKG, --install PKG     Install packages (CLI mode)
   -r PKG, --remove PKG      Remove packages (CLI mode)
+  --upgrade PKG            Upgrade selected packages (CLI mode)
   --info PKG                Show package information
   --self-upgrade            Check for updates and upgrade if available
   --self-install [OPTS]     Install/update pmget itself
@@ -440,6 +829,10 @@ ${BOLD}Examples:${RESET}
   pmget -c -s -i vim htop        # Install vim and htop with sudo
   pmget -c -r nano               # Remove nano
   pmget --info curl              # Show info for curl package
+  pmget --pm winget              # Use WinGet from Git Bash on Windows
+  pmget --pm choco --show i       # Browse Chocolatey installed packages
+  pmget --wsl --pm apt            # Use the package manager inside WSL
+  pmget --pm brew -c --upgrade formula:wget
 EOF
 }
 
@@ -449,9 +842,14 @@ parse_args() {
     local mode=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --wsl) ;; # Already dispatched on Windows; harmless inside WSL/Linux.
+            --refresh) REFRESH_CACHE=true ;;
             -c|--cli)     CLI_MODE=true ;;
             -s|--sudo)    USE_SUDO=true ;;
             -u|--update)  UPDATE_CACHE=true ;;
+            --pm)
+                [[ -n "${2:-}" ]] || { echo "Error: --pm requires a package manager." >&2; exit 1; }
+                REQUESTED_PM="$2"; shift ;;
             --show)    
                 case "$2" in
                     i|installed)   SHOW_MODE="INSTALLED" ;;
@@ -462,12 +860,22 @@ parse_args() {
                 shift ;;
             -i|--install) mode="i" ;;
             -r|--remove)  mode="r" ;;
+            --upgrade)    mode="u" ;;
             -v|--version) echo "pmget v${VERSION}"; exit 0 ;;
             -h|--help)    show_help; exit 0 ;;
             --self-install) self_install "${@:2}"; exit 0 ;;
-            --self-upgrade) perform_self_upgrade; exit 0 ;;
-            --info)       detect_pm; show_info "$2"; exit 0 ;;
-            *) [[ "$mode" == "i" ]] && INSTALL_PKGS+=("$1"); [[ "$mode" == "r" ]] && REMOVE_PKGS+=("$1") ;;
+            --self-upgrade) SELF_UPGRADE=true ;;
+            --info)
+                [[ -n "${2:-}" ]] || { echo "Error: --info requires a package." >&2; exit 1; }
+                INFO_PKG="$2"; shift ;;
+            -*) echo "Error: Unknown option: $1" >&2; exit 1 ;;
+            *)
+                case "$mode" in
+                    i) INSTALL_PKGS+=("$1") ;;
+                    r) REMOVE_PKGS+=("$1") ;;
+                    u) UPGRADE_PKGS+=("$1") ;;
+                    *) echo "Error: Unexpected argument: $1" >&2; exit 1 ;;
+                esac ;;
         esac
         shift
     done
@@ -480,13 +888,19 @@ run_cli() {
     local rc=0
     [[ ${#REMOVE_PKGS[@]} -gt 0 ]] && { echo "${RED}Removing:${RESET} ${REMOVE_PKGS[*]}"; run_pm remove "${REMOVE_PKGS[@]}" || rc=1; echo; }
     [[ ${#INSTALL_PKGS[@]} -gt 0 ]] && { echo "${GREEN}Installing:${RESET} ${INSTALL_PKGS[*]}"; run_pm install "${INSTALL_PKGS[@]}" || rc=1; }
-    [[ ${#INSTALL_PKGS[@]} -eq 0 && ${#REMOVE_PKGS[@]} -eq 0 ]] && echo "${YELLOW}No packages selected${RESET}"
+    [[ ${#UPGRADE_PKGS[@]} -gt 0 ]] && { echo "${BLUE}Upgrading:${RESET} ${UPGRADE_PKGS[*]}"; run_pm upgrade "${UPGRADE_PKGS[@]}" || rc=1; }
+    [[ ${#INSTALL_PKGS[@]} -eq 0 && ${#REMOVE_PKGS[@]} -eq 0 && ${#UPGRADE_PKGS[@]} -eq 0 ]] && echo "${YELLOW}No packages selected${RESET}"
     exit $rc
 }
 
 # Section: TUI Logic Initialization
 
+require_fzf() {
+    require_dependency fzf
+}
+
 run_tui() {
+    require_fzf || return 1
     echo -n "${WHITE}Loading packages...${RESET} "
     
     TMP_DIR=$(mktemp -d)
@@ -495,25 +909,35 @@ run_tui() {
     INST_FILE="$TMP_DIR/installed"
     UPGR_FILE="$TMP_DIR/upgradeable"
     VER_FILE="$TMP_DIR/remote_ver"
+    HEADER_FILE="$TMP_DIR/header"
+    LIST_FILE="$TMP_DIR/list"
     
     (
-        r_ver=$(curl -fsSL https://raw.githubusercontent.com/${REPO}/main/pmget | grep '^VERSION=' | head -n1 | cut -d'"' -f2)
-        echo "$r_ver" > "$VER_FILE"
-    ) & >/dev/null 2>&1
+        cached_query version 21600 fetch_remote_version > "$VER_FILE"
+    ) >/dev/null 2>&1 &
     HELPER_SCRIPT="$TMP_DIR/helper.sh"
     
-    trap "rm -rf '$TMP_DIR'; [[ -n \"${st_orig:-}\" ]] && stty \"\$st_orig\" 2>/dev/null; tput cnorm 2>/dev/null || true" EXIT INT
+    trap "rm -rf '$TMP_DIR'; [[ -n \"${st_orig:-}\" ]] && stty \"\$st_orig\" 2>/dev/null; show_cursor" EXIT INT
     
-    if [[ $EUID -eq 0 || "$USE_SUDO" == true ]]; then
+    if supports_sudo && [[ $EUID -eq 0 || "$USE_SUDO" == true ]]; then
         USE_SUDO=true
         echo "__SUDO__=true" >> "$STATE_FILE"
     fi
     
     touch "$STATE_FILE" "$INST_FILE" "$UPGR_FILE"
     
-    fetch_packages > "$PKG_FILE"
-    fetch_installed > "$INST_FILE"
-    fetch_upgradeable > "$UPGR_FILE"
+    if ! load_package_data; then
+        echo " ${RED}Failed to query $DETECTED_PM.${RESET}" >&2
+        return 1
+    fi
+
+    # Include installed packages absent from the remote catalog, so they can
+    # still be removed, and fill in Homebrew versions where available.
+    awk -F'\t' 'BEGIN {OFS="\t"}
+        FILENAME == ARGV[1] {installed[$1]=$2; next}
+        {seen[$1]=1; if ($2 ~ /^ *$/ && $1 in installed) $2=installed[$1]; print}
+        END {for (p in installed) if (!(p in seen)) print p, installed[p], p}
+    ' "$INST_FILE" "$PKG_FILE" > "$PKG_FILE.tmp" && mv "$PKG_FILE.tmp" "$PKG_FILE"
     
     if [[ ! -s "$PKG_FILE" ]]; then
         echo " ${RED}Failed!${RESET}"
@@ -523,13 +947,10 @@ run_tui() {
 
     # Section: TUI Helper Script Generation
 
-    cat > "$HELPER_SCRIPT" <<EOF
-#!/usr/bin/env bash
-DETECTED_PM="$DETECTED_PM"
-VERSION="$VERSION"
-PM_PATH="$PM_PATH"
-
-EOF
+    printf '#!/usr/bin/env bash\nDETECTED_PM=%q\nVERSION=%q\nPM_PATH=%q\nOS_LABEL=%q\nPREVIEW_DIR=%q\nHEADER_FILE=%q\n' \
+        "$DETECTED_PM" "$VERSION" "$PM_PATH" "$(os_label)" "$TMP_DIR/previews" "$HEADER_FILE" > "$HELPER_SCRIPT"
+    mkdir -p "$TMP_DIR/previews"
+    declare -f show_package_info supports_sudo >> "$HELPER_SCRIPT"
 
     cat >> "$HELPER_SCRIPT" <<'EOF'
 
@@ -548,6 +969,7 @@ _set_state() {
 }
 
 _toggle_sudo() {
+    supports_sudo || return 0
     local sf="$1"
     if grep -q "__SUDO__=true" "$sf"; then
         grep -v "__SUDO__=" "$sf" > "$sf.tmp"
@@ -592,15 +1014,23 @@ _info() {
     local pm_name="$1"
     local pm_path="$2"
     local pkg="$3"
-    echo -e "\033[1m\033[34mPackage Information:\033[0m\n"
-    
-    case "$pm_name" in
-        nala|apt)    apt-cache show "$pkg" 2>/dev/null | grep -Ev '^(Section:|Priority:|Installed|Essential:|SHA1:|SHA256:|SHA512:|MD5sum:|Description-md5:|Filename:|Size:|Task:)' ;;
-        dnf)    "$pm_path" info "$pkg" 2>/dev/null ;;
-        pacman) "$pm_path" -Si "$pkg" 2>/dev/null || "$pm_path" -Qi "$pkg" 2>/dev/null ;;
-        zypper) "$pm_path" info "$pkg" 2>/dev/null ;;
-        apk)    "$pm_path" info -a "$pkg" 2>/dev/null ;;
-    esac
+    local key="$pkg"
+    key=${key//%/%25}; key=${key//\//%2F}; key=${key//:/%3A}
+    local cached="$PREVIEW_DIR/$key" temporary="$PREVIEW_DIR/$key.$BASHPID"
+    if [[ -f "$cached" ]]; then printf '%s\n' "$(<"$cached")"; return; fi
+    # Avoid starting network queries for every package passed while scrolling.
+    sleep 0.15
+    if {
+        echo -e "\033[1m\033[34mPackage Information:\033[0m\n"
+        show_package_info "$pm_name" "$pm_path" "$pkg"
+    } > "$temporary" 2>&1; then
+        mv -f "$temporary" "$cached"
+        printf '%s\n' "$(<"$cached")"
+    else
+        printf '%s\n' "$(<"$temporary")"
+        rm -f "$temporary"
+        return 1
+    fi
 }
 
 _internal_gen_list() {
@@ -612,10 +1042,23 @@ _internal_gen_list() {
     local search_tag="${6:-}"
     local update_pkg="${7:-}"
     local action="${8:-}"
+    local emit_header="${9:-1}"
+    local sudo_available=0
+    supports_sudo && sudo_available=1
+    local row_cache="$pkg_file.rows" row_temporary="$pkg_file.rows.$BASHPID"
+    local input_file="$pkg_file" cached_rows=0
+    if [[ -s "$row_cache" ]]; then input_file="$row_cache"; cached_rows=1; fi
     
-    awk -v state_file="$state_file" -v inst_file="$inst_file" -v upgr_file="$upgr_file" \
+    if ! awk -v state_file="$state_file" -v inst_file="$inst_file" -v upgr_file="$upgr_file" \
         -v filter_mode="$filter_mode" -v search_tag="$search_tag" \
-        -v update_pkg="$update_pkg" -v action="$action" '
+        -v update_pkg="$update_pkg" -v action="$action" -v sudo_available="$sudo_available" \
+        -v os_label="$OS_LABEL" -v pm_name="$DETECTED_PM" \
+        -v cached_rows="$cached_rows" -v row_cache="$row_temporary" \
+        -v header_file="$HEADER_FILE" -v emit_header="$emit_header" '
+    function header(text) {
+        print text > header_file
+        if (emit_header) print "_\t" text
+    }
     BEGIN {
         sudo_on = 0
         if (state_file != "") {
@@ -720,11 +1163,12 @@ _internal_gen_list() {
             if (state[p] != "3") n_avail_upgr++
         }
         
-        printf "_\t%s%sSUDO %s%s%s\n", BOLD, YELLOW, (sudo_on ? GREEN "● ON" : RED "○ OFF"), RESET, BOLD
-        printf "_\t%s%sCURR %s[+] %s%d  %s[-] %s%d  %s[↑] %s%d  %s[^] %s%d%s\n", BOLD, BLUE, GREEN, WHITE, n_inst, RED, WHITE, n_rem, CYAN, WHITE, n_upgr, YELLOW, WHITE, n_avail_upgr, RESET
-        printf "_\t%s%sKEYS %s↹ Toggle Sudo  ␣ Select Package  ⏎ Apply Changes%s\n", BOLD, CYAN, WHITE, RESET
-        printf "_\t%s%sCTRL %sV Toggle Info  T First   B Last  U Upgrade All%s\n", BOLD, MAGENTA, WHITE, RESET
-        printf "_\t%s%sREPO %sgithub.com/gabrielmsilva00/pmget%s\n", BOLD, WHITE, CYAN, RESET
+        header(sprintf("%s%sSPEC %s%s | %s%s", BOLD, CYAN, WHITE, os_label, pm_name, RESET))
+        header(sprintf("%s%s%s %s%s%s", BOLD, YELLOW, (sudo_available ? "SUDO" : "PRIV"), (sudo_available ? (sudo_on ? GREEN "● ON" : RED "○ OFF") : GREY "Managed by package manager"), RESET, BOLD))
+        header(sprintf("%s%sCURR %s[+] %s%d  %s[-] %s%d  %s[↑] %s%d  %s[^] %s%d%s", BOLD, BLUE, GREEN, WHITE, n_inst, RED, WHITE, n_rem, CYAN, WHITE, n_upgr, YELLOW, WHITE, n_avail_upgr, RESET))
+        header(sprintf("%s%sKEYS %s%s␣ Select Package  ⏎ Apply Changes%s", BOLD, CYAN, WHITE, (sudo_available ? "↹ Toggle Sudo  " : ""), RESET))
+        header(sprintf("%s%sCTRL %sV Toggle Info  T First   B Last  U Upgrade All%s", BOLD, MAGENTA, WHITE, RESET))
+        header(sprintf("%s%sREPO %sgithub.com/gabrielmsilva00/pmget%s", BOLD, WHITE, CYAN, RESET))
     }
     {
         split($0, arr, "\t+")
@@ -735,9 +1179,18 @@ _internal_gen_list() {
         if (avail_ver == " ") avail_ver = ""
         
         s = state[pkg]; is_inst = (pkg in installed); is_upgr = (pkg in upgradeable)
-        
-        if (filter_mode == "INSTALLED" && !is_inst) next
-        if (filter_mode == "UPGRADEABLE" && !is_upgr) next
+        suffix = (search_tag != "" ? "\t" search_tag : "")
+        if (cached_rows) {
+            if (filter_mode == "INSTALLED" && !is_inst) next
+            if (filter_mode == "UPGRADEABLE" && !is_upgr) next
+            if (s == "1" || s == "2" || s == "3") {
+                col = BOLD (s == "1" ? GREEN : (s == "2" ? RED : CYAN))
+                sym = (s == "1" ? "[+]" : (s == "2" ? "[-]" : "[↑]"))
+                name = substr(arr[2], index(arr[2], "] ") + 2)
+                printf "%s\t%s%s %s\t%s\t%s%s\n", pkg, col, sym, name, arr[3], arr[4], suffix
+            } else print $0 suffix
+            next
+        }
         
         # Truncate Name
         pkg_disp = pkg
@@ -763,6 +1216,9 @@ _internal_gen_list() {
         }
 
         sym = "[ ]"; col = RESET
+        if (is_upgr) { sym = "[^]"; col = BOLD YELLOW }
+        else if (is_inst) { sym = "[✓]"; col = BOLD BLUE }
+        base_sym = sym; base_col = col
         if (s == "1") { sym = "[+]"; col = BOLD GREEN }
         else if (s == "2") { sym = "[-]"; col = BOLD RED }
         else if (s == "3") { sym = "[↑]"; col = BOLD CYAN }
@@ -776,8 +1232,7 @@ _internal_gen_list() {
         vis_len_name = 4 + length(pkg_disp)
         pad_name = 36 - vis_len_name
         if (pad_name < 1) pad_name = 1
-        padding_name = ""
-        for (i=0; i<pad_name; i++) padding_name = padding_name " "
+        padding_name = sprintf("%*s", pad_name, "")
         
         # Version Padding (Field 3)
         # We need to pad field 3 so field 4 (description) aligns
@@ -793,10 +1248,12 @@ _internal_gen_list() {
         
         pad_ver = 25 - content_len_ver
         if (pad_ver < 1) pad_ver = 1
-        padding_ver = ""
-        for (i=0; i<pad_ver; i++) padding_ver = padding_ver " "
+        padding_ver = sprintf("%*s", pad_ver, "")
 
-        suffix = (search_tag != "" ? "\t" search_tag : "")
+        # Cache static formatting once; reloads update only selection markers.
+        printf "%s\t%s%s %s%s%s\t%s%s\t%s%s\n", pkg, base_col, base_sym, pkg_disp, RESET, padding_name, ver_info, padding_ver, display, RESET > row_cache
+        if (filter_mode == "INSTALLED" && !is_inst) next
+        if (filter_mode == "UPGRADEABLE" && !is_upgr) next
         
         # Field 1: pkg (ID)
         # Field 2: Name Col
@@ -805,7 +1262,12 @@ _internal_gen_list() {
         
         printf "%s\t%s%s %s%s%s\t%s%s\t%s%s%s\n", pkg, col, sym, pkg_disp, RESET, padding_name, ver_info, padding_ver, display, RESET, suffix
     }
-    ' "$pkg_file"
+    ' "$input_file"; then
+        rm -f "$row_temporary"
+        return 1
+    fi
+    if [[ "$cached_rows" -eq 0 ]]; then mv -f "$row_temporary" "$row_cache"; fi
+    return 0
 }
 
 _internal_smart_reload() {
@@ -844,6 +1306,7 @@ _internal_smart_reload() {
 
 case "$1" in
     gen-list)     _internal_gen_list "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" ;;
+    list)         _internal_gen_list "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" 0 ;;
     update-state) _internal_state_mod "$2" "$3" "$4" "$5" "$6" ;;
     toggle-sudo)  _toggle_sudo "$2" ;;
     get-prompt)
@@ -872,30 +1335,31 @@ case "$1" in
 esac
 EOF
     
-    local helper_cmd="bash '$HELPER_SCRIPT'"
+    local helper_cmd
+    # fzf already runs callbacks in Bash; source the helper in that process
+    # rather than launching a second Bash for every key press and preview.
+    printf -v helper_cmd 'source %q' "$HELPER_SCRIPT"
     
-    local cmd_reload="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE'"
-    local cmd_next="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '{1}' next"
-    local cmd_prev="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '{1}' prev"
-    local cmd_toggle="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '{1}' toggle_or_select"
-    local cmd_sudo="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '' toggle-sudo"
-    local cmd_upgr_all="$helper_cmd gen-list '$PKG_FILE' '$STATE_FILE' '$INST_FILE' '$UPGR_FILE' '$SHOW_MODE' '' '' upgrade-all"
+    local cmd_reload
+    printf -v cmd_reload '%s list %q %q %q %q %q' \
+        "$helper_cmd" "$PKG_FILE" "$STATE_FILE" "$INST_FILE" "$UPGR_FILE" "$SHOW_MODE"
+    # fzf quotes field placeholders for the configured shell.
+    local cmd_next="$cmd_reload '' {1} next"
+    local cmd_prev="$cmd_reload '' {1} prev"
+    local cmd_toggle="$cmd_reload '' {1} toggle_or_select"
+    local cmd_sudo="$cmd_reload '' '' toggle-sudo"
+    supports_sudo || cmd_sudo="$cmd_reload"
+    local cmd_upgr_all="$cmd_reload '' '' upgrade-all"
     
-    local cmd_preview=""
-    local title_cmd="echo -e \"\033[1m\033[34mPackage Information:\033[0m\n\""
-    case "$DETECTED_PM" in
-        nala|apt)    cmd_preview="$title_cmd; apt-cache show {1} 2>/dev/null | grep -Ev '^(Section:|Priority:|Installed|Essential:|SHA1:|SHA256:|SHA512:|MD5sum:|Description-md5:|Filename:|Size:|Task:)'" ;;
-        dnf)    cmd_preview="$title_cmd; dnf info {1} 2>/dev/null" ;;
-        pacman) cmd_preview="$title_cmd; $PM_PATH -Si {1} 2>/dev/null || $PM_PATH -Qi {1} 2>/dev/null" ;;
-        zypper) cmd_preview="$title_cmd; zypper info {1} 2>/dev/null" ;;
-        apk)    cmd_preview="$title_cmd; apk info -a {1} 2>/dev/null" ;;
-    esac
+    local cmd_preview="$helper_cmd info {1}"
+    local cmd_header
+    printf -v cmd_header 'printf "%%s\\n" "$(<%q)"' "$HEADER_FILE"
 
     if [[ -t 0 ]]; then
         st_orig=$(stty -g)
         stty -icanon -echo
     fi
-    tput civis 2>/dev/null || true
+    hide_cursor
     
     local fzf_exit_code=0
     
@@ -905,10 +1369,11 @@ EOF
     fi
     local -a fzf_opts=(
         --ansi
+        --sync
         --no-multi
         --delimiter=$'\t'
         --with-nth=2,3,4
-        --header-lines=5
+        --header-lines=0
         --tiebreak=begin,index
         --preview="$cmd_preview"
         --preview-window="top:30%"
@@ -916,16 +1381,29 @@ EOF
         --info=inline
         --no-bold
         --no-hscroll
-        --bind "right:reload($cmd_next)"
-        --bind "left:reload($cmd_prev)"
-        --bind "space:reload($cmd_toggle)"
-        --bind "tab:reload($cmd_sudo)"
+        --bind "right:reload-sync($cmd_next)"
+        --bind "left:reload-sync($cmd_prev)"
+        --bind "space:reload-sync($cmd_toggle)"
+        --bind "tab:reload-sync($cmd_sudo)"
         --bind "ctrl-v:toggle-preview,alt-v:toggle-preview"
         --bind "ctrl-t:first,alt-t:first"
         --bind "ctrl-b:last,alt-b:last"
         --bind "enter:accept"
-        --bind "ctrl-u:reload($cmd_upgr_all),alt-u:reload($cmd_upgr_all)"
+        --bind "load:transform-header($cmd_header)"
+        --bind "ctrl-u:reload-sync($cmd_upgr_all),alt-u:reload-sync($cmd_upgr_all)"
     )
+
+    # Keep callback command strings unchanged when crossing into native fzf:
+    # MSYS path rewriting would turn /usr/bin/bash into an unquoted path under
+    # Program Files. Every callback path is already escaped for Bash above.
+    # Select Bash for reloads/previews, including native Windows fzf. SHELL
+    # supports executable paths containing spaces (unlike --with-shell).
+    local fzf_shell="$BASH"
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*)
+            fzf_shell=$(cygpath -w "$BASH")
+            ;;
+    esac
 
     if [[ -n "$fzf_mouse_opt" ]]; then
         fzf_opts+=("$fzf_mouse_opt")
@@ -950,13 +1428,16 @@ EOF
             fi
         fi
 
-        bash "$HELPER_SCRIPT" gen-list "$PKG_FILE" "$STATE_FILE" "$INST_FILE" "$UPGR_FILE" "$SHOW_MODE" | \
-        fzf "${fzf_opts[@]}" --prompt "$prompt_str" > /dev/null
+        # Read a completed file directly, avoiding the slow MSYS-to-native input
+        # pipe. Update counters separately from reload-sync header-line events.
+        source "$HELPER_SCRIPT" list "$PKG_FILE" "$STATE_FILE" "$INST_FILE" "$UPGR_FILE" "$SHOW_MODE" > "$LIST_FILE" || return 1
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' SHELL="$fzf_shell" \
+        fzf "${fzf_opts[@]}" --header="$(<"$HEADER_FILE")" --prompt "$prompt_str" < "$LIST_FILE" > /dev/null
         
         fzf_exit_code=$?
         
         [[ -n "${st_orig:-}" ]] && stty "$st_orig" 2>/dev/null || true
-        tput cnorm 2>/dev/null || true
+        show_cursor
         
         if [[ $fzf_exit_code -ne 0 ]]; then
             local n_inst n_rem n_upgr
@@ -986,7 +1467,7 @@ EOF
                 if [[ -t 0 ]]; then
                     stty -icanon -echo
                 fi
-                tput civis 2>/dev/null || true
+                hide_cursor
                 continue
             else
                 echo
@@ -1030,33 +1511,61 @@ EOF
             if [[ -t 0 ]]; then
                 stty -icanon -echo
             fi
-            tput civis 2>/dev/null || true
+            hide_cursor
             continue
         fi
     done
     
     [[ -n "${st_orig:-}" ]] && stty "$st_orig" 2>/dev/null || true
-    tput cnorm 2>/dev/null || true
+    show_cursor
     
     echo
-    local cmd="pmget -c"
-    [[ "$USE_SUDO" == true ]] && cmd+=" --sudo"
-    [[ -n "$inst" ]] && cmd+=" -i $inst"
-    [[ -n "$rem" ]] && cmd+=" -r $rem"
-    [[ -n "$upgr" ]] && cmd+=" -i $upgr"
-     
     echo "${WHITE}> Executing...${RESET}"
-    eval "$cmd"
-    exit 0
+    INSTALL_PKGS=(); REMOVE_PKGS=(); UPGRADE_PKGS=()
+    [[ -n "$inst" ]] && read -r -a INSTALL_PKGS <<< "$inst"
+    [[ -n "$rem" ]] && read -r -a REMOVE_PKGS <<< "$rem"
+    [[ -n "$upgr" ]] && read -r -a UPGRADE_PKGS <<< "$upgr"
+    run_cli
 }
 
 # Section: Main Execution Entry
 
 main() {
+    forward_to_wsl "$@" || return $?
     parse_args "$@"
-    detect_pm
-    [[ "$UPDATE_CACHE" == true ]] && update_cache
+    if [[ "$SELF_UPGRADE" == true ]]; then
+        perform_self_upgrade
+        return $?
+    fi
+    detect_pm || return 1
+    if ! supports_sudo; then
+        if [[ "$USE_SUDO" == true ]]; then
+            echo "${YELLOW}$DETECTED_PM manages its own privileges; --sudo is ignored. For Chocolatey, use an elevated Git Bash when required.${RESET}" >&2
+        fi
+        USE_SUDO=false
+    fi
+    [[ -n "$INFO_PKG" ]] && { show_info "$INFO_PKG"; return $?; }
+    if [[ "$UPDATE_CACHE" == true ]]; then
+        update_cache || return $?
+        REFRESH_CACHE=true
+        local directory
+        directory=$(cache_directory)
+        rm -f "$directory/catalog.v1.time" "$directory"/upgrades-*.v1.time
+    fi
     [[ "$CLI_MODE" == true ]] && run_cli || run_tui
 }
 
-main "$@"
+# All functions must be defined before dispatching a piped self-installer.
+if [[ -z "${PMGET_INSTALLING:-}" && ! -t 0 && "${BASH_SOURCE[0]}" == "$0" && ! -f "${BASH_SOURCE[0]}" ]]; then
+    skip_install=false
+    for arg in "$@"; do
+        case "$arg" in
+            -v|--version|-h|--help|--info|--wsl) skip_install=true; break ;;
+        esac
+    done
+    [[ "$skip_install" == false ]] && self_install "$@"
+fi
+
+if [[ -z "${BASH_SOURCE[0]:-}" || "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi
