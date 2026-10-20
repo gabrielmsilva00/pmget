@@ -157,6 +157,7 @@ table=$(printf '%-20s %-25s %s\r\n' 'Nome' 'Id' 'Versão     Disponível Origem'
     printf '%-20s %-25s %-10s %-10s %s\r\n' 'Truncated' 'Publisher.Truncated…' '1.0' '2.0' winget
     printf '%s\r\n' '1 atualização disponível.')
 assert_eq "$(printf '%s\n' "$table" | parse_winget_table packages)" $'Git.Git\t2.50.0\tGit  for Windows' 'WinGet catalog table'
+assert_eq "$(printf '%s\n' "$table" | LC_ALL=C parse_winget_table packages)" $'Git.Git\t2.50.0\tGit  for Windows' 'localized WinGet table with a C-locale parent'
 assert_eq "$(printf '%s\n' "$table" | parse_winget_table installed)" $'Git.Git\t2.50.0' 'WinGet installed table'
 assert_eq "$(printf '%s\n' "$table" | parse_winget_table upgradeable)" $'Git.Git\t2.55.0' 'WinGet upgrade table'
 assert_eq "$(printf 'Name Id      Version\n---------------------\nGit  Git.Git 2.55.0.5\n' | parse_winget_table packages)" $'Git.Git\t2.55.0.5\tGit' 'single-space column boundary'

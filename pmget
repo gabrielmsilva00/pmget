@@ -548,7 +548,11 @@ require_dependency() {
 # WinGet emits localized, padded tables rather than JSON. Only consume rows
 # below a separator, and never pass a truncated identifier to an operation.
 parse_winget_table() {
-    awk -v mode="$1" '
+    # WinGet writes UTF-8 even when Git Bash inherits the C locale. Count
+    # characters rather than bytes so localized headers keep column offsets.
+    local table_locale=C.UTF-8
+    [[ "$OSTYPE" != darwin* ]] || table_locale=en_US.UTF-8
+    LC_ALL="$table_locale" awk -v mode="$1" '
         function trim(s) {sub(/^ +/, "", s); sub(/ +$/, "", s); return s}
         { gsub(/\r/, ""); gsub(/\033\[[0-9;?]*[A-Za-z]/, "") }
         /^-[- ]+$/ {
